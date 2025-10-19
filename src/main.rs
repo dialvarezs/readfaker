@@ -2,6 +2,7 @@ mod cli;
 
 use clap::Parser;
 use cli::Cli;
+use readfaker::generator::load_distributions;
 
 fn main() {
     let cli = Cli::parse();
@@ -18,4 +19,5 @@ fn main() {
         eprintln!("================================\n");
     }
 
+    load_distributions(cli.input).unwrap();
 }

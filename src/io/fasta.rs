@@ -15,24 +15,7 @@ pub struct FastaRecord {
 pub struct FastaReader;
 
 impl FastaReader {
-    /// Read all sequences from a FASTA file
-    ///
-    /// # Arguments
-    /// * `path` - Path to the FASTA file
-    ///
-    /// # Returns
-    /// A vector of FastaRecord structs containing sequence IDs and sequences
-    ///
-    /// # Example
-    /// ```
-    /// use std::path::Path;
-    /// use readfaker::io::FastaReader;
-    ///
-    /// let sequences = FastaReader::read(Path::new("reference.fasta"))?;
-    /// for record in sequences {
-    ///     println!("Sequence {}: {} bp", record.id, record.sequence.len());
-    /// }
-    /// ```
+    /// Read sequences from a FASTA file, returning an iterator
     pub fn read(path: &Path) -> Result<Vec<FastaRecord>> {
         let mut records = Vec::new();
 
