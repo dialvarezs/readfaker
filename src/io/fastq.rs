@@ -35,11 +35,6 @@ impl FastqRecord {
     pub fn len(&self) -> usize {
         self.sequence.len()
     }
-
-    /// Check if the record is empty
-    pub fn is_empty(&self) -> bool {
-        self.sequence.is_empty()
-    }
 }
 
 /// Reader for FASTQ files
@@ -60,9 +55,7 @@ impl FastqReader {
     /// }
     /// # Ok::<(), anyhow::Error>(())
     /// ```
-    pub fn from_path(
-        path: &Path,
-    ) -> Result<impl Iterator<Item = Result<FastqRecord>> + '_> {
+    pub fn from_path(path: &Path) -> Result<impl Iterator<Item = Result<FastqRecord>> + '_> {
         let mut reader = parse_fastx_file(path)
             .with_context(|| format!("Failed to open FASTQ file: {}", path.display()))?;
 
@@ -126,33 +119,25 @@ impl FastqWriter {
 
     /// Write a single FASTQ record to the file
     pub fn write_record(&mut self, record: &FastqRecord) -> Result<()> {
-        writeln!(self.writer, "@{}", record.id)
-            .context("Failed to write FASTQ header")?;
-
-        self.writer.write_all(&record.sequence)
-            .context("Failed to write FASTQ sequence")?;
-        writeln!(self.writer).context("Failed to write newline after sequence")?;
-
-        writeln!(self.writer, "+")
-            .context("Failed to write FASTQ separator")?;
-
-        self.writer.write_all(&record.quality)
-            .context("Failed to write FASTQ quality scores")?;
-        writeln!(self.writer).context("Failed to write newline after quality")?;
-
-        Ok(())
+        (|| -> std::io::Result<()> {
+            writeln!(self.writer, "@{}", record.id)?;
+            self.writer.write_all(&record.sequence)?;
+            self.writer.write_all(b"\n+\n")?;
+            self.writer.write_all(&record.quality)?;
+            self.writer.write_all(b"\n")?;
+            Ok(())
+        })()
+        .context("Failed to write FASTQ record")
     }
 
     /// Flush the internal buffer to ensure all data is written to disk
     pub fn flush(&mut self) -> Result<()> {
-        self.writer.flush()
-            .context("Failed to flush FASTQ writer")
+        self.writer.flush().context("Failed to flush FASTQ writer")
     }
 }
 
 impl Drop for FastqWriter {
     fn drop(&mut self) {
-        // Best effort flush on drop - ignore errors since we can't handle them in Drop
         let _ = self.writer.flush();
     }
 }
