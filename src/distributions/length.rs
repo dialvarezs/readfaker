@@ -49,3 +49,22 @@ impl LengthDistribution {
         unreachable!();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+
+    #[test]
+    fn test_add_and_sample() {
+        let mut dist = LengthDistribution::new();
+        dist.add_value(100);
+        dist.add_value(100);
+        dist.add_value(200);
+
+        let mut rng = StdRng::seed_from_u64(42);
+        let sampled = dist.sample(&mut rng);
+        assert!(sampled == 100 || sampled == 200);
+    }
+}

@@ -55,3 +55,22 @@ impl QualityDistribution {
         Some(qualities[index].clone())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+
+    #[test]
+    fn test_add_and_sample() {
+        let mut dist = QualityDistribution::new();
+        dist.add_value(5, vec![30, 30, 30, 30, 30]);
+
+        let mut rng = StdRng::seed_from_u64(42);
+        let sampled = dist.sample(5, &mut rng);
+
+        assert!(sampled.is_some());
+        assert_eq!(sampled.unwrap().len(), 5);
+    }
+}

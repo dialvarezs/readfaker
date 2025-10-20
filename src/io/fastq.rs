@@ -98,9 +98,9 @@ impl FastqReader {
 /// # Example
 /// ```no_run
 /// use readfaker::io::fastq::{FastqWriter, FastqRecord};
-/// use std::path::Path;
+/// use std::path::PathBuf;
 ///
-/// let mut writer = FastqWriter::new(Path::new("output.fastq"))?;
+/// let mut writer = FastqWriter::new(&PathBuf::from("output.fastq"))?;
 /// let record = FastqRecord::new(
 ///     "read1".to_string(),
 ///     b"ACGT".to_vec(),
@@ -161,5 +161,44 @@ impl FastqWriter {
 impl Drop for FastqWriter {
     fn drop(&mut self) {
         let _ = self.writer.flush();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fastq_record_new() {
+        let record = FastqRecord::new(
+            "read1".to_string(),
+            b"ACGT".to_vec(),
+            b"IIII".to_vec(),
+        );
+        assert!(record.is_ok());
+        assert_eq!(record.unwrap().len(), 4);
+    }
+
+    #[test]
+    fn test_fastq_writer() {
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test.fastq");
+
+        {
+            let mut writer = FastqWriter::new(&temp_file).unwrap();
+            let record = FastqRecord::new(
+                "read1".to_string(),
+                b"ACGT".to_vec(),
+                b"IIII".to_vec(),
+            ).unwrap();
+            writer.write_record(&record).unwrap();
+            writer.flush().unwrap();
+        }
+
+        let content = std::fs::read_to_string(&temp_file).unwrap();
+        assert!(content.contains("@read1"));
+        assert!(content.contains("ACGT"));
+
+        std::fs::remove_file(temp_file).ok();
     }
 }

@@ -96,3 +96,27 @@ pub fn load_distributions(
 
     Ok((length_distribution, quality_distribution))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_reads() {
+        let sequences = vec![FastaRecord {
+            id: "seq1".to_string(),
+            sequence: b"ACGTACGTACGTACGTACGTACGTACGTACGT".to_vec(),
+        }];
+
+        let mut length_dist = LengthDistribution::new();
+        let mut quality_dist = QualityDistribution::new();
+        length_dist.add_value(10);
+        quality_dist.add_value(10, vec![30; 10]);
+
+        let reads = generate_reads(sequences, length_dist, quality_dist, 5, Some(42)).unwrap();
+
+        assert_eq!(reads.len(), 5);
+        assert_eq!(reads[0].id, "read_0");
+        assert_eq!(reads[0].len(), 10);
+    }
+}

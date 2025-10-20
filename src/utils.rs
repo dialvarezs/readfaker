@@ -29,3 +29,26 @@ pub fn get_random_nucleotide<R: Rng>(nucleotide: u8, mut rng: R) -> u8 {
 
     nucleotide_options[rng.random_range(0..nucleotide_options.len())]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+
+    #[test]
+    fn test_get_random_nucleotide() {
+        let mut rng = StdRng::seed_from_u64(42);
+        let result = get_random_nucleotide(b'A', &mut rng);
+        assert_ne!(result, b'A');
+        assert!(result == b'C' || result == b'G' || result == b'T');
+    }
+
+    #[test]
+    fn test_quality_mapping() {
+        // Q10 should be approximately 0.1
+        assert!((QUALITY_MAPPING[&10] - 0.1).abs() < 0.001);
+        // Q20 should be approximately 0.01
+        assert!((QUALITY_MAPPING[&20] - 0.01).abs() < 0.001);
+    }
+}
