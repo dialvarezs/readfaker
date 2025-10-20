@@ -1,21 +1,27 @@
-// FASTA file reading using needletail
+//! FASTA file reading using needletail.
 
 use anyhow::{Context, Result};
 use needletail::{parse_fastx_file, Sequence};
 use std::path::Path;
 
-/// Represents a FASTA sequence with its name and bases
+/// Represents a FASTA sequence with its ID and nucleotide sequence.
 #[derive(Debug, Clone)]
 pub struct FastaRecord {
     pub id: String,
     pub sequence: Vec<u8>,
 }
 
-/// Reader for FASTA files
+/// Reader for FASTA files.
 pub struct FastaReader;
 
 impl FastaReader {
-    /// Read sequences from a FASTA file, returning an iterator
+    /// Reads all sequences from a FASTA file.
+    ///
+    /// # Arguments
+    /// * `path` - Path to the FASTA file
+    ///
+    /// # Returns
+    /// Vector of all FASTA records in the file
     pub fn read(path: &Path) -> Result<Vec<FastaRecord>> {
         let mut records = Vec::new();
 
@@ -39,7 +45,13 @@ impl FastaReader {
         Ok(records)
     }
 
-    /// Calculate the total length of all sequences
+    /// Calculates the total length of all sequences.
+    ///
+    /// # Arguments
+    /// * `records` - Slice of FASTA records
+    ///
+    /// # Returns
+    /// Sum of all sequence lengths
     pub fn total_length(records: &[FastaRecord]) -> usize {
         records.iter().map(|r| r.sequence.len()).sum()
     }

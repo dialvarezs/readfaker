@@ -1,5 +1,3 @@
-// Command-line interface definition
-
 use clap::Parser;
 use std::path::PathBuf;
 

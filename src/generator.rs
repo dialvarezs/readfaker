@@ -9,6 +9,20 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::path::PathBuf;
 
+/// Generates synthetic reads from reference sequences with realistic quality profiles.
+///
+/// Randomly samples subsequences from the provided reference sequences, applies
+/// sequencing errors based on quality scores, and generates FASTQ records.
+///
+/// # Arguments
+/// * `sequences` - Reference sequences to sample from
+/// * `length_distribution` - Distribution for sampling read lengths
+/// * `quality_distribution` - Distribution for sampling quality scores
+/// * `number_of_reads` - Number of reads to generate
+/// * `seed` - Optional random seed for reproducibility (defaults to 0)
+///
+/// # Returns
+/// Vector of generated FASTQ records with simulated errors
 pub fn generate_reads(
     sequences: Vec<FastaRecord>,
     length_distribution: LengthDistribution,
@@ -56,6 +70,16 @@ pub fn generate_reads(
     Ok(records)
 }
 
+/// Loads length and quality distributions from an existing FASTQ file.
+///
+/// Reads all records from the input file and builds empirical distributions
+/// for read lengths and quality scores.
+///
+/// # Arguments
+/// * `fastq_path` - Path to the FASTQ file to analyze
+///
+/// # Returns
+/// Tuple of (LengthDistribution, QualityDistribution) built from the input file
 pub fn load_distributions(
     fastq_path: PathBuf,
 ) -> Result<(LengthDistribution, QualityDistribution)> {

@@ -1,4 +1,6 @@
-// I/O module for reading and writing sequence files
+//! I/O module for reading and writing sequence files.
+//!
+//! Provides readers and writers for FASTA and FASTQ file formats.
 
 pub mod fasta;
 pub mod fastq;

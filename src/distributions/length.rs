@@ -1,7 +1,7 @@
 use rand::Rng;
 use std::collections::HashMap;
 
-/// Distribution of read lengths sampled from observed data.
+/// Empirical distribution of read lengths built from observed data.
 pub struct LengthDistribution {
     length_histogram: HashMap<usize, usize>,
     total_count: usize,
@@ -16,7 +16,10 @@ impl LengthDistribution {
         }
     }
 
-    /// Adds observed lengths to the distribution.
+    /// Adds an observed length to the distribution.
+    ///
+    /// # Arguments
+    /// * `length` - Read length to add
     pub fn add_value(&mut self, length: usize) {
         self.length_histogram
             .entry(length)
@@ -26,6 +29,12 @@ impl LengthDistribution {
     }
 
     /// Samples a random length from the distribution.
+    ///
+    /// # Arguments
+    /// * `rng` - Random number generator
+    ///
+    /// # Returns
+    /// A randomly sampled read length
     pub fn sample<R: Rng>(&self, rng: &mut R) -> usize {
         let target = rng.random_range(0..self.total_count);
         let mut cumulative = 0;

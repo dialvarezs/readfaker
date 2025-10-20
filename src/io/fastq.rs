@@ -1,4 +1,4 @@
-// FASTQ file reading and writing
+//! FASTQ file reading and writing.
 
 use anyhow::{Context, Result};
 use needletail::{parse_fastx_file, Sequence};
@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
-/// Represents a FASTQ record
+/// Represents a FASTQ record with sequence and quality scores.
 #[derive(Debug, Clone)]
 pub struct FastqRecord {
     pub id: String,
@@ -15,7 +15,15 @@ pub struct FastqRecord {
 }
 
 impl FastqRecord {
-    /// Create a new FASTQ record
+    /// Creates a new FASTQ record with validation.
+    ///
+    /// # Arguments
+    /// * `id` - Read identifier
+    /// * `sequence` - Nucleotide sequence
+    /// * `quality` - Quality scores (must match sequence length)
+    ///
+    /// # Returns
+    /// Validated FASTQ record or error if lengths don't match
     pub fn new(id: String, sequence: Vec<u8>, quality: Vec<u8>) -> Result<Self> {
         if sequence.len() != quality.len() {
             anyhow::bail!(
@@ -31,7 +39,7 @@ impl FastqRecord {
         })
     }
 
-    /// Get the length of the read
+    /// Returns the length of the sequence.
     pub fn len(&self) -> usize {
         self.sequence.len()
     }
@@ -107,7 +115,10 @@ pub struct FastqWriter {
 }
 
 impl FastqWriter {
-    /// Create a new FASTQ writer for the specified file path
+    /// Creates a new FASTQ writer for the specified file path.
+    ///
+    /// # Arguments
+    /// * `path` - Path to the output FASTQ file
     pub fn new(path: &PathBuf) -> Result<Self> {
         let file = File::create(path)
             .with_context(|| format!("Failed to create FASTQ file: {}", path.display()))?;
@@ -130,6 +141,10 @@ impl FastqWriter {
         .context("Failed to write FASTQ record")
     }
 
+    /// Writes multiple FASTQ records to the file.
+    ///
+    /// # Arguments
+    /// * `records` - Slice of FASTQ records to write
     pub fn write_records(&mut self, records: &[FastqRecord]) -> Result<()> {
         for record in records {
             self.write_record(record)?;
