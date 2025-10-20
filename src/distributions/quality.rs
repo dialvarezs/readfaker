@@ -65,12 +65,14 @@ mod tests {
     #[test]
     fn test_add_and_sample() {
         let mut dist = QualityDistribution::new();
-        dist.add_value(5, vec![30, 30, 30, 30, 30]);
+        dist.add_value(5, vec![b'?'; 5]);
 
         let mut rng = StdRng::seed_from_u64(42);
         let sampled = dist.sample(5, &mut rng);
 
         assert!(sampled.is_some());
-        assert_eq!(sampled.unwrap().len(), 5);
+        let sampled = sampled.unwrap();
+        assert_eq!(sampled.len(), 5);
+        assert!(sampled.iter().all(|&q| q >= 33));
     }
 }

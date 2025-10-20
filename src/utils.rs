@@ -2,11 +2,11 @@ use rand::Rng;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-/// Mapping of Phred quality scores (1-50) to error probabilities.
+/// Mapping of Phred quality scores (0-93) to error probabilities.
 ///
 /// Error probability is calculated as: 10^(-Q/10)
 pub static QUALITY_MAPPING: LazyLock<HashMap<u8, f32>> = LazyLock::new(|| {
-    (1..=50)
+    (0..=93)
         .map(|q: u8| (q, 10.0_f32.powf(-(q as f32) / 10.0)))
         .collect()
 });
@@ -46,6 +46,8 @@ mod tests {
 
     #[test]
     fn test_quality_mapping() {
+        // Q0 should be 1.0
+        assert!((QUALITY_MAPPING[&0] - 1.0).abs() < 0.001);
         // Q10 should be approximately 0.1
         assert!((QUALITY_MAPPING[&10] - 0.1).abs() < 0.001);
         // Q20 should be approximately 0.01

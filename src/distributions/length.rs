@@ -34,19 +34,23 @@ impl LengthDistribution {
     /// * `rng` - Random number generator
     ///
     /// # Returns
-    /// A randomly sampled read length
-    pub fn sample<R: Rng>(&self, rng: &mut R) -> usize {
+    /// A randomly sampled read length, or None if the distribution is empty
+    pub fn sample<R: Rng>(&self, rng: &mut R) -> Option<usize> {
+        if self.total_count == 0 {
+            return None;
+        }
+
         let target = rng.random_range(0..self.total_count);
         let mut cumulative = 0;
 
         for (&length, &count) in &self.length_histogram {
             cumulative += count;
             if cumulative > target {
-                return length;
+                return Some(length);
             }
         }
 
-        unreachable!();
+        None
     }
 }
 
@@ -64,7 +68,7 @@ mod tests {
         dist.add_value(200);
 
         let mut rng = StdRng::seed_from_u64(42);
-        let sampled = dist.sample(&mut rng);
+        let sampled = dist.sample(&mut rng).unwrap();
         assert!(sampled == 100 || sampled == 200);
     }
 }

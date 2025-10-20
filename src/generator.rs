@@ -3,7 +3,7 @@ use crate::io::fasta::FastaRecord;
 use crate::io::fastq::FastqReader;
 use crate::io::FastqRecord;
 use crate::utils::{get_random_nucleotide, QUALITY_MAPPING};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use rand::prelude::IndexedRandom;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -35,16 +35,18 @@ pub fn generate_reads(
     let mut read_count = 0;
 
     while read_count < number_of_reads {
-        let length = length_distribution.sample(&mut rng);
+        let length = length_distribution
+            .sample(&mut rng)
+            .ok_or_else(|| anyhow!("Length distribution is empty"))?;
         let reference_sequence = sequences.choose(&mut rng).unwrap();
 
         // Skip if sampled length is longer than reference sequence
-        if length >= reference_sequence.sequence.len() {
+        if length > reference_sequence.sequence.len() {
             continue;
         }
 
         let max_start = reference_sequence.sequence.len() - length;
-        let start_position = rng.random_range(0..max_start);
+        let start_position = rng.random_range(0..=max_start);
         let mut sequence =
             reference_sequence.sequence[start_position..start_position + length].to_vec();
 
@@ -53,8 +55,9 @@ pub fn generate_reads(
         };
 
         // Insert sequence nucleotide substitutions depending on error value
-        qualities.iter().enumerate().for_each(|(i, quality)| {
-            if rng.random_range(0.0..1.0) <= QUALITY_MAPPING[quality] {
+        qualities.iter().enumerate().for_each(|(i, &quality_ascii)| {
+            let phred = quality_ascii.saturating_sub(33);
+            if rng.random_range(0.0..1.0) <= QUALITY_MAPPING[&phred] {
                 sequence[i] = get_random_nucleotide(sequence[i], &mut rng);
             }
         });
@@ -111,12 +114,13 @@ mod tests {
         let mut length_dist = LengthDistribution::new();
         let mut quality_dist = QualityDistribution::new();
         length_dist.add_value(10);
-        quality_dist.add_value(10, vec![30; 10]);
+        quality_dist.add_value(10, vec![b'?'; 10]); // Phred 30 as ASCII
 
         let reads = generate_reads(sequences, length_dist, quality_dist, 5, Some(42)).unwrap();
 
         assert_eq!(reads.len(), 5);
         assert_eq!(reads[0].id, "read_0");
         assert_eq!(reads[0].len(), 10);
+        assert!(reads[0].quality.iter().all(|&q| q >= 33));
     }
 }
