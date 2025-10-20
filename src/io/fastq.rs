@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use needletail::{parse_fastx_file, Sequence};
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Represents a FASTQ record
 #[derive(Debug, Clone)]
@@ -108,7 +108,7 @@ pub struct FastqWriter {
 
 impl FastqWriter {
     /// Create a new FASTQ writer for the specified file path
-    pub fn new(path: &Path) -> Result<Self> {
+    pub fn new(path: &PathBuf) -> Result<Self> {
         let file = File::create(path)
             .with_context(|| format!("Failed to create FASTQ file: {}", path.display()))?;
 
@@ -128,6 +128,13 @@ impl FastqWriter {
             Ok(())
         })()
         .context("Failed to write FASTQ record")
+    }
+
+    pub fn write_records(&mut self, records: &[FastqRecord]) -> Result<()> {
+        for record in records {
+            self.write_record(record)?;
+        }
+        Ok(())
     }
 
     /// Flush the internal buffer to ensure all data is written to disk
