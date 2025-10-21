@@ -9,68 +9,117 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::path::PathBuf;
 
-/// Generates synthetic reads from reference sequences with realistic quality profiles.
+/// Generator for synthetic sequencing reads with realistic error profiles.
 ///
-/// Randomly samples subsequences from the provided reference sequences, applies
-/// sequencing errors based on quality scores, and generates FASTQ records.
+/// Produces FASTQ records by sampling subsequences from reference genomes and applying
+/// sequencing errors based on quality score distributions. Designed for simulating
+/// contamination reads in genome assembly exercises.
 ///
-/// # Arguments
-/// * `sequences` - Reference sequences to sample from
-/// * `length_distribution` - Distribution for sampling read lengths
-/// * `quality_distribution` - Distribution for sampling quality scores
-/// * `number_of_reads` - Number of reads to generate
-/// * `seed` - Optional random seed for reproducibility (defaults to 0)
+/// # Example
+/// ```no_run
+/// use readfaker::generator::ReadGenerator;
+/// use readfaker::distributions::{LengthDistribution, QualityDistribution};
+/// use readfaker::io::fasta::FastaRecord;
 ///
-/// # Returns
-/// Vector of generated FASTQ records with simulated errors
-pub fn generate_reads(
-    sequences: Vec<FastaRecord>,
+/// let references = vec![FastaRecord {
+///     id: "ecoli".to_string(),
+///     sequence: b"ACGTACGT".to_vec(),
+/// }];
+/// let mut length_dist = LengthDistribution::new();
+/// length_dist.add_value(100);
+/// let mut quality_dist = QualityDistribution::new();
+/// quality_dist.add_value(100, vec![b'I'; 100]);
+///
+/// let mut generator = ReadGenerator::new(references, length_dist, quality_dist, Some(42));
+/// let read = generator.generate_read().unwrap();
+/// ```
+pub struct ReadGenerator {
+    reference_sequences: Vec<FastaRecord>,
     length_distribution: LengthDistribution,
     quality_distribution: QualityDistribution,
-    number_of_reads: usize,
-    seed: Option<u64>,
-) -> Result<Vec<FastqRecord>> {
-    let mut rng = StdRng::seed_from_u64(seed.unwrap_or(0));
-    let mut records = Vec::new();
-    let mut read_count = 0;
+    rng: StdRng,
+}
 
-    while read_count < number_of_reads {
-        let length = length_distribution
-            .sample(&mut rng)
-            .ok_or_else(|| anyhow!("Length distribution is empty"))?;
-        let reference_sequence = sequences.choose(&mut rng).unwrap();
-
-        // Skip if sampled length is longer than reference sequence
-        if length > reference_sequence.sequence.len() {
-            continue;
-        }
-
-        let max_start = reference_sequence.sequence.len() - length;
-        let start_position = rng.random_range(0..=max_start);
-        let mut sequence =
-            reference_sequence.sequence[start_position..start_position + length].to_vec();
-
-        let Some(qualities) = quality_distribution.sample(length, &mut rng) else {
-            continue; // Skip if no quality string available
+impl ReadGenerator {
+    /// Creates a new read generator with specified distributions and random seed.
+    ///
+    /// # Arguments
+    /// * `reference_sequences` - Reference genomes to sample subsequences from
+    /// * `length_distribution` - Empirical distribution of read lengths
+    /// * `quality_distribution` - Empirical distribution of quality scores by read length
+    /// * `seed` - Optional random seed for reproducibility (uses system entropy if None)
+    ///
+    /// # Returns
+    /// A configured `ReadGenerator` ready to produce reads
+    pub fn new(
+        reference_sequences: Vec<FastaRecord>,
+        length_distribution: LengthDistribution,
+        quality_distribution: QualityDistribution,
+        seed: Option<u64>,
+    ) -> Self {
+        let rng = match seed {
+            Some(s) => StdRng::seed_from_u64(s),
+            None => StdRng::from_rng(&mut rand::rng()),
         };
 
-        // Insert sequence nucleotide substitutions depending on error value
-        qualities.iter().enumerate().for_each(|(i, &quality_ascii)| {
-            let phred = quality_ascii.saturating_sub(33);
-            if rng.random_range(0.0..1.0) <= QUALITY_MAPPING[&phred] {
-                sequence[i] = get_random_nucleotide(sequence[i], &mut rng);
-            }
-        });
-
-        records.push(FastqRecord {
-            id: format!("read_{}", read_count),
-            sequence,
-            quality: qualities,
-        });
-        read_count += 1;
+        Self {
+            reference_sequences,
+            length_distribution,
+            quality_distribution,
+            rng,
+        }
     }
 
-    Ok(records)
+    /// Generates a single synthetic read with realistic sequencing errors.
+    ///
+    /// Samples a read length from the distribution, chooses a random reference sequence,
+    /// extracts a random subsequence, applies quality-based errors, and returns a FASTQ record.
+    /// Automatically retries if the sampled length exceeds the reference sequence length.
+    ///
+    /// # Returns
+    /// A `FastqRecord` with simulated sequencing errors based on quality scores
+    ///
+    /// # Errors
+    /// Returns an error if the length or quality distributions are empty
+    pub fn generate_read(&mut self) -> Result<FastqRecord> {
+        loop {
+            let length = self.length_distribution
+                .sample(&mut self.rng)
+                .ok_or_else(|| anyhow!("Length distribution is empty"))?;
+            let reference_sequence = self.reference_sequences.choose(&mut self.rng).unwrap();
+
+            // Skip if sampled length is longer than reference sequence
+            if length > reference_sequence.sequence.len() {
+                continue;
+            }
+
+            let max_start = reference_sequence.sequence.len() - length;
+            let start_position = self.rng.random_range(0..=max_start);
+            let mut sequence =
+                reference_sequence.sequence[start_position..start_position + length].to_vec();
+
+            let Some(qualities) = self.quality_distribution.sample(length, &mut self.rng) else {
+                continue; // Skip if no quality string available
+            };
+
+            // Insert sequence nucleotide substitutions depending on error value
+            qualities
+                .iter()
+                .enumerate()
+                .for_each(|(i, &quality_ascii)| {
+                    let phred = quality_ascii.saturating_sub(33);
+                    if self.rng.random_range(0.0..1.0) <= QUALITY_MAPPING[&phred] {
+                        sequence[i] = get_random_nucleotide(sequence[i], &mut self.rng);
+                    }
+                });
+
+            return Ok(FastqRecord {
+                id: format!("read_{}", self.rng.random::<u64>()),
+                sequence,
+                quality: qualities,
+            })
+        }
+    }
 }
 
 /// Loads length and quality distributions from an existing FASTQ file.
@@ -105,7 +154,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_generate_reads() {
+    fn test_generate_read() {
         let sequences = vec![FastaRecord {
             id: "seq1".to_string(),
             sequence: b"ACGTACGTACGTACGTACGTACGTACGTACGT".to_vec(),
@@ -116,11 +165,14 @@ mod tests {
         length_dist.add_value(10);
         quality_dist.add_value(10, vec![b'?'; 10]); // Phred 30 as ASCII
 
-        let reads = generate_reads(sequences, length_dist, quality_dist, 5, Some(42)).unwrap();
+        let mut generator = ReadGenerator::new(sequences, length_dist, quality_dist, Some(42));
 
-        assert_eq!(reads.len(), 5);
-        assert_eq!(reads[0].id, "read_0");
-        assert_eq!(reads[0].len(), 10);
-        assert!(reads[0].quality.iter().all(|&q| q >= 33));
+        // Generate multiple reads to verify the generator can be reused
+        for _ in 0..5 {
+            let read = generator.generate_read().unwrap();
+            assert_eq!(read.len(), 10);
+            assert!(read.quality.iter().all(|&q| q >= 33));
+            assert!(read.id.starts_with("read_"));
+        }
     }
 }
