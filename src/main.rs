@@ -20,7 +20,7 @@ fn main() {
         eprintln!("================================\n");
     }
 
-    let (length_distribution, quality_distribution) = load_distributions(cli.input).unwrap();
+    let (length_distribution, quality_distribution) = load_distributions(&cli.input).unwrap();
     let mut generator = ReadGenerator::new(
         FastaReader::read(&cli.reference).unwrap(),
         length_distribution,

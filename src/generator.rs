@@ -83,7 +83,8 @@ impl ReadGenerator {
     /// Returns an error if the length or quality distributions are empty
     pub fn generate_read(&mut self) -> Result<FastqRecord> {
         loop {
-            let length = self.length_distribution
+            let length = self
+                .length_distribution
                 .sample(&mut self.rng)
                 .ok_or_else(|| anyhow!("Length distribution is empty"))?;
             let reference_sequence = self.reference_sequences.choose(&mut self.rng).unwrap();
@@ -117,7 +118,7 @@ impl ReadGenerator {
                 id: format!("read_{}", self.rng.random::<u64>()),
                 sequence,
                 quality: qualities,
-            })
+            });
         }
     }
 }
@@ -133,12 +134,12 @@ impl ReadGenerator {
 /// # Returns
 /// Tuple of (LengthDistribution, QualityDistribution) built from the input file
 pub fn load_distributions(
-    fastq_path: PathBuf,
+    fastq_path: &PathBuf,
 ) -> Result<(LengthDistribution, QualityDistribution)> {
     let mut length_distribution = LengthDistribution::new();
     let mut quality_distribution = QualityDistribution::new();
 
-    let reader = FastqReader::from_path(&fastq_path)?;
+    let reader = FastqReader::from_path(fastq_path)?;
 
     for record in reader {
         let record = record?;

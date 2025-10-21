@@ -170,11 +170,7 @@ mod tests {
 
     #[test]
     fn test_fastq_record_new() {
-        let record = FastqRecord::new(
-            "read1".to_string(),
-            b"ACGT".to_vec(),
-            b"IIII".to_vec(),
-        );
+        let record = FastqRecord::new("read1".to_string(), b"ACGT".to_vec(), b"IIII".to_vec());
         assert!(record.is_ok());
         assert_eq!(record.unwrap().len(), 4);
     }
@@ -186,11 +182,8 @@ mod tests {
 
         {
             let mut writer = FastqWriter::new(&temp_file).unwrap();
-            let record = FastqRecord::new(
-                "read1".to_string(),
-                b"ACGT".to_vec(),
-                b"IIII".to_vec(),
-            ).unwrap();
+            let record =
+                FastqRecord::new("read1".to_string(), b"ACGT".to_vec(), b"IIII".to_vec()).unwrap();
             writer.write_record(&record).unwrap();
             writer.flush().unwrap();
         }
