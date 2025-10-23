@@ -20,19 +20,26 @@ const PHRED_OFFSET: u8 = 33;
 /// # Example
 /// ```no_run
 /// use readfaker::generator::ReadGenerator;
-/// use readfaker::models::{LengthModel, QualityModel};
+/// use readfaker::models::{ErrorModel, LengthModel, QualityModel};
 /// use readfaker::io::fasta::FastaRecord;
 ///
 /// let references = vec![FastaRecord {
 ///     id: "ecoli".to_string(),
 ///     sequence: b"ACGTACGT".to_vec(),
 /// }];
-/// let mut length_dist = LengthModel::new();
-/// length_dist.add_value(100);
-/// let mut quality_dist = QualityModel::new();
-/// quality_dist.add_value(100, vec![b'I'; 100]);
+/// let mut length_model = LengthModel::new();
+/// length_model.add_value(100);
+/// let mut quality_model = QualityModel::new();
+/// quality_model.add_value(100, vec![b':'; 100]);
+/// let error_model = ErrorModel::new(None, None, None);
 ///
-/// let mut generator = ReadGenerator::new(references, length_dist, quality_dist, Some(42)).unwrap();
+/// let mut generator = ReadGenerator::new(
+///     references,
+///     length_model,
+///     quality_model,
+///     error_model,
+///     Some(42),
+/// ).unwrap();
 /// let read = generator.generate_read().unwrap();
 /// ```
 pub struct ReadGenerator {

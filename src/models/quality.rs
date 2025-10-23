@@ -63,11 +63,11 @@ mod tests {
 
     #[test]
     fn test_add_and_sample() {
-        let mut dist = QualityModel::new();
-        dist.add_value(5, vec![b'?'; 5]);
+        let mut model = QualityModel::new();
+        model.add_value(5, vec![b'?'; 5]);
 
         let mut rng = StdRng::seed_from_u64(42);
-        let sampled = dist.sample(5, &mut rng);
+        let sampled = model.sample(5, &mut rng);
 
         assert!(sampled.is_some());
         let sampled = sampled.unwrap();
@@ -78,22 +78,22 @@ mod tests {
     #[test]
     fn test_sample_fallback_to_closest() {
         // Test that sampling falls back to closest length when exact match not found
-        let mut dist = QualityModel::new();
-        dist.add_value(100, vec![b'I'; 100]); // Length 100
-        dist.add_value(200, vec![b'J'; 200]); // Length 200
-        dist.add_value(500, vec![b'K'; 500]); // Length 500
+        let mut model = QualityModel::new();
+        model.add_value(100, vec![b'I'; 100]); // Length 100
+        model.add_value(200, vec![b'J'; 200]); // Length 200
+        model.add_value(500, vec![b'K'; 500]); // Length 500
 
         let mut rng = StdRng::seed_from_u64(42);
 
         // Request length 150 - closest is 100 or 200 (both 50 away, min_by_key picks first)
-        let sampled = dist.sample(150, &mut rng);
+        let sampled = model.sample(150, &mut rng);
         assert!(sampled.is_some());
         let sampled = sampled.unwrap();
         // Should get quality string from either 100 or 200
         assert!(sampled.len() == 100 || sampled.len() == 200);
 
         // Request length 450 - closest is 500 (50 away)
-        let sampled = dist.sample(450, &mut rng);
+        let sampled = model.sample(450, &mut rng);
         assert!(sampled.is_some());
         assert_eq!(sampled.unwrap().len(), 500);
     }

@@ -60,33 +60,33 @@ mod tests {
 
     #[test]
     fn test_add_and_sample() {
-        let mut dist = LengthModel::new();
-        dist.add_value(100);
-        dist.add_value(100);
-        dist.add_value(200);
+        let mut model = LengthModel::new();
+        model.add_value(100);
+        model.add_value(100);
+        model.add_value(200);
 
         let mut rng = StdRng::seed_from_u64(42);
-        let sampled = dist.sample(&mut rng).unwrap();
+        let sampled = model.sample(&mut rng).unwrap();
         assert!(sampled == 100 || sampled == 200);
     }
 
     #[test]
     fn test_deterministic_sampling() {
         // Verify that sampling is reproducible with same seed
-        let mut dist = LengthModel::new();
-        dist.add_value(50);
-        dist.add_value(100);
-        dist.add_value(150);
-        dist.add_value(200);
-        dist.add_value(250);
+        let mut model = LengthModel::new();
+        model.add_value(50);
+        model.add_value(100);
+        model.add_value(150);
+        model.add_value(200);
+        model.add_value(250);
 
         // Sample with first RNG
         let mut rng1 = StdRng::seed_from_u64(12345);
-        let samples1: Vec<usize> = (0..10).map(|_| dist.sample(&mut rng1).unwrap()).collect();
+        let samples1: Vec<usize> = (0..10).map(|_| model.sample(&mut rng1).unwrap()).collect();
 
         // Sample with second RNG (same seed)
         let mut rng2 = StdRng::seed_from_u64(12345);
-        let samples2: Vec<usize> = (0..10).map(|_| dist.sample(&mut rng2).unwrap()).collect();
+        let samples2: Vec<usize> = (0..10).map(|_| model.sample(&mut rng2).unwrap()).collect();
 
         // Should produce identical sequences
         assert_eq!(samples1, samples2);
