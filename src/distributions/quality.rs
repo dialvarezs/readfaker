@@ -6,12 +6,18 @@ pub struct QualityDistribution {
     qualities_by_length: HashMap<usize, Vec<Vec<u8>>>,
 }
 
-impl QualityDistribution {
-    /// Creates a new empty quality distribution.
-    pub fn new() -> Self {
+impl Default for QualityDistribution {
+    fn default() -> Self {
         Self {
             qualities_by_length: HashMap::new(),
         }
+    }
+}
+
+impl QualityDistribution {
+    /// Creates a new empty quality distribution.
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Adds observed quality scores to the distribution.

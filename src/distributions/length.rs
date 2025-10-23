@@ -7,13 +7,19 @@ pub struct LengthDistribution {
     total_count: usize,
 }
 
-impl LengthDistribution {
-    /// Creates a new empty length distribution.
-    pub fn new() -> Self {
+impl Default for LengthDistribution {
+    fn default() -> Self {
         Self {
             length_histogram: HashMap::new(),
             total_count: 0,
         }
+    }
+}
+
+impl LengthDistribution {
+    /// Creates a new empty length distribution.
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Adds an observed length to the distribution.
