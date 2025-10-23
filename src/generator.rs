@@ -118,8 +118,9 @@ impl ReadGenerator {
                 .iter()
                 .enumerate()
                 .for_each(|(i, &quality_ascii)| {
-                    let phred = quality_ascii.saturating_sub(PHRED_OFFSET);
-                    if self.rng.random_range(0.0..1.0) <= QUALITY_MAPPING[&phred] {
+                    let phred = usize::from(quality_ascii.saturating_sub(PHRED_OFFSET).min(93));
+                    let error_probability = QUALITY_MAPPING[phred];
+                    if self.rng.random_range(0.0..1.0) <= error_probability {
                         sequence[i] = get_random_nucleotide(sequence[i], &mut self.rng);
                     }
                 });
