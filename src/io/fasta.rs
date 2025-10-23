@@ -44,17 +44,6 @@ impl FastaReader {
 
         Ok(records)
     }
-
-    /// Calculates the total length of all sequences.
-    ///
-    /// # Arguments
-    /// * `records` - Slice of FASTA records
-    ///
-    /// # Returns
-    /// Sum of all sequence lengths
-    pub fn total_length(records: &[FastaRecord]) -> usize {
-        records.iter().map(|r| r.sequence.len()).sum()
-    }
 }
 
 #[cfg(test)]
@@ -69,20 +58,5 @@ mod tests {
         };
         assert_eq!(record.id, "seq1");
         assert_eq!(record.sequence, b"ACGT");
-    }
-
-    #[test]
-    fn test_total_length() {
-        let records = vec![
-            FastaRecord {
-                id: "seq1".to_string(),
-                sequence: b"ACGT".to_vec(),
-            },
-            FastaRecord {
-                id: "seq2".to_string(),
-                sequence: b"TGCA".to_vec(),
-            },
-        ];
-        assert_eq!(FastaReader::total_length(&records), 8);
     }
 }

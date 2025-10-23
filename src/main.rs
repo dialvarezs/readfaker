@@ -25,7 +25,7 @@ fn main() -> Result<()> {
         length_distribution,
         quality_distribution,
         cli.seed,
-    );
+    )?;
     let mut writer = FastqWriter::new(&cli.output)?;
 
     for _ in 0..cli.num_reads {

@@ -43,6 +43,11 @@ impl FastqRecord {
     pub fn len(&self) -> usize {
         self.sequence.len()
     }
+
+    /// Checks whether the sequence is empty.
+    pub fn is_empty(&self) -> bool {
+        self.sequence.is_empty()
+    }
 }
 
 /// Reader for FASTQ files
@@ -93,7 +98,9 @@ impl FastqReader {
 /// Writer for FASTQ files
 ///
 /// Writes FASTQ records to a file using buffered I/O.
-/// The buffer is automatically flushed when the writer is dropped.
+/// The buffer is automatically flushed when the writer is dropped, but flush
+/// errors are silently ignored. Call `flush()` explicitly if you need to
+/// handle potential I/O errors during the final flush.
 ///
 /// # Example
 /// ```no_run
@@ -107,7 +114,7 @@ impl FastqReader {
 ///     b"IIII".to_vec()
 /// )?;
 /// writer.write_record(&record)?;
-/// writer.flush()?;
+/// writer.flush()?;  // Explicitly flush to handle errors
 /// # Ok::<(), anyhow::Error>(())
 /// ```
 pub struct FastqWriter {
@@ -152,13 +159,21 @@ impl FastqWriter {
         Ok(())
     }
 
-    /// Flush the internal buffer to ensure all data is written to disk
+    /// Flush the internal buffer to ensure all data is written to disk.
+    ///
+    /// It's recommended to call this explicitly before the writer is dropped
+    /// to ensure flush errors are properly handled.
     pub fn flush(&mut self) -> Result<()> {
         self.writer.flush().context("Failed to flush FASTQ writer")
     }
 }
 
 impl Drop for FastqWriter {
+    /// Automatically flushes the buffer when the writer is dropped.
+    ///
+    /// **Note**: Flush errors are silently ignored in the destructor since
+    /// destructors cannot return errors. If you need to handle potential
+    /// flush errors, call `flush()` explicitly before the writer is dropped.
     fn drop(&mut self) {
         let _ = self.writer.flush();
     }

@@ -7,7 +7,10 @@ use anyhow::{anyhow, Result};
 use rand::prelude::IndexedRandom;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use std::path::PathBuf;
+use std::path::Path;
+
+
+const PHRED_OFFSET: u8 = 33;
 
 /// Generator for synthetic sequencing reads with realistic error profiles.
 ///
@@ -30,7 +33,7 @@ use std::path::PathBuf;
 /// let mut quality_dist = QualityDistribution::new();
 /// quality_dist.add_value(100, vec![b'I'; 100]);
 ///
-/// let mut generator = ReadGenerator::new(references, length_dist, quality_dist, Some(42));
+/// let mut generator = ReadGenerator::new(references, length_dist, quality_dist, Some(42)).unwrap();
 /// let read = generator.generate_read().unwrap();
 /// ```
 pub struct ReadGenerator {
@@ -44,30 +47,37 @@ impl ReadGenerator {
     /// Creates a new read generator with specified distributions and random seed.
     ///
     /// # Arguments
-    /// * `reference_sequences` - Reference genomes to sample subsequences from
+    /// * `reference_sequences` - Reference genomes to sample subsequences from (must not be empty)
     /// * `length_distribution` - Empirical distribution of read lengths
     /// * `quality_distribution` - Empirical distribution of quality scores by read length
     /// * `seed` - Optional random seed for reproducibility (uses system entropy if None)
     ///
     /// # Returns
     /// A configured `ReadGenerator` ready to produce reads
+    ///
+    /// # Errors
+    /// Returns an error if `reference_sequences` is empty
     pub fn new(
         reference_sequences: Vec<FastaRecord>,
         length_distribution: LengthDistribution,
         quality_distribution: QualityDistribution,
         seed: Option<u64>,
-    ) -> Self {
+    ) -> Result<Self> {
+        if reference_sequences.is_empty() {
+            anyhow::bail!("Reference sequences cannot be empty");
+        }
+
         let rng = match seed {
             Some(s) => StdRng::seed_from_u64(s),
             None => StdRng::from_rng(&mut rand::rng()),
         };
 
-        Self {
+        Ok(Self {
             reference_sequences,
             length_distribution,
             quality_distribution,
             rng,
-        }
+        })
     }
 
     /// Generates a single synthetic read with realistic sequencing errors.
@@ -108,7 +118,7 @@ impl ReadGenerator {
                 .iter()
                 .enumerate()
                 .for_each(|(i, &quality_ascii)| {
-                    let phred = quality_ascii.saturating_sub(33);
+                    let phred = quality_ascii.saturating_sub(PHRED_OFFSET);
                     if self.rng.random_range(0.0..1.0) <= QUALITY_MAPPING[&phred] {
                         sequence[i] = get_random_nucleotide(sequence[i], &mut self.rng);
                     }
@@ -134,7 +144,7 @@ impl ReadGenerator {
 /// # Returns
 /// Tuple of (LengthDistribution, QualityDistribution) built from the input file
 pub fn load_distributions(
-    fastq_path: &PathBuf,
+    fastq_path: &Path,
 ) -> Result<(LengthDistribution, QualityDistribution)> {
     let mut length_distribution = LengthDistribution::new();
     let mut quality_distribution = QualityDistribution::new();
@@ -166,14 +176,26 @@ mod tests {
         length_dist.add_value(10);
         quality_dist.add_value(10, vec![b'?'; 10]); // Phred 30 as ASCII
 
-        let mut generator = ReadGenerator::new(sequences, length_dist, quality_dist, Some(42));
+        let mut generator = ReadGenerator::new(sequences, length_dist, quality_dist, Some(42)).unwrap();
 
         // Generate multiple reads to verify the generator can be reused
         for _ in 0..5 {
             let read = generator.generate_read().unwrap();
             assert_eq!(read.len(), 10);
-            assert!(read.quality.iter().all(|&q| q >= 33));
+            assert!(read.quality.iter().all(|&q| q >= PHRED_OFFSET));
             assert!(read.id.starts_with("read_"));
         }
+    }
+
+    #[test]
+    fn test_empty_reference_sequences() {
+        let sequences = vec![]; // Empty!
+        let length_dist = LengthDistribution::new();
+        let quality_dist = QualityDistribution::new();
+
+        let result = ReadGenerator::new(sequences, length_dist, quality_dist, Some(42));
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert_eq!(err.to_string(), "Reference sequences cannot be empty");
     }
 }

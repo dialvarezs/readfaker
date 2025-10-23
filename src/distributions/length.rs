@@ -1,19 +1,11 @@
 use rand::Rng;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 /// Empirical distribution of read lengths built from observed data.
+#[derive(Default)]
 pub struct LengthDistribution {
-    length_histogram: HashMap<usize, usize>,
+    length_histogram: BTreeMap<usize, usize>,
     total_count: usize,
-}
-
-impl Default for LengthDistribution {
-    fn default() -> Self {
-        Self {
-            length_histogram: HashMap::new(),
-            total_count: 0,
-        }
-    }
 }
 
 impl LengthDistribution {
@@ -76,5 +68,27 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
         let sampled = dist.sample(&mut rng).unwrap();
         assert!(sampled == 100 || sampled == 200);
+    }
+
+    #[test]
+    fn test_deterministic_sampling() {
+        // Verify that sampling is reproducible with same seed
+        let mut dist = LengthDistribution::new();
+        dist.add_value(50);
+        dist.add_value(100);
+        dist.add_value(150);
+        dist.add_value(200);
+        dist.add_value(250);
+
+        // Sample with first RNG
+        let mut rng1 = StdRng::seed_from_u64(12345);
+        let samples1: Vec<usize> = (0..10).map(|_| dist.sample(&mut rng1).unwrap()).collect();
+
+        // Sample with second RNG (same seed)
+        let mut rng2 = StdRng::seed_from_u64(12345);
+        let samples2: Vec<usize> = (0..10).map(|_| dist.sample(&mut rng2).unwrap()).collect();
+
+        // Should produce identical sequences
+        assert_eq!(samples1, samples2);
     }
 }
