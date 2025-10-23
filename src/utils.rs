@@ -19,15 +19,15 @@ pub static QUALITY_MAPPING: LazyLock<HashMap<u8, f32>> = LazyLock::new(|| {
 ///
 /// # Returns
 /// A random nucleotide byte from {A, C, G, T} excluding the input nucleotide
-pub fn get_random_nucleotide<R: Rng>(nucleotide: u8, mut rng: R) -> u8 {
-    let nucleotides = [b'A', b'C', b'G', b'T'];
-    let nucleotide_options: Vec<u8> = nucleotides
+pub fn get_random_nucleotide<R: Rng>(nucleotide: u8, rng: &mut R) -> u8 {
+    const NUCLEOTIDES: [u8; 4] = [b'A', b'C', b'G', b'T'];
+    let idx = NUCLEOTIDES
         .iter()
-        .filter(|&&n| n != nucleotide)
-        .copied()
-        .collect();
+        .position(|&n| n == nucleotide)
+        .unwrap_or(0);
+    let offset = rng.random_range(1..=3);
 
-    nucleotide_options[rng.random_range(0..nucleotide_options.len())]
+    NUCLEOTIDES[(idx + offset) % 4]
 }
 
 #[cfg(test)]
