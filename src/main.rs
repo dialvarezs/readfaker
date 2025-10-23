@@ -1,11 +1,10 @@
-mod cli;
-
+use anyhow::Result;
 use clap::Parser;
-use cli::Cli;
+use readfaker::cli::Cli;
 use readfaker::generator::{load_distributions, ReadGenerator};
 use readfaker::io::{FastaReader, FastqWriter};
 
-fn main() {
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
     if cli.verbose {
@@ -20,17 +19,19 @@ fn main() {
         eprintln!("================================\n");
     }
 
-    let (length_distribution, quality_distribution) = load_distributions(&cli.input).unwrap();
+    let (length_distribution, quality_distribution) = load_distributions(&cli.input)?;
     let mut generator = ReadGenerator::new(
-        FastaReader::read(&cli.reference).unwrap(),
+        FastaReader::read(&cli.reference)?,
         length_distribution,
         quality_distribution,
         cli.seed,
     );
-    let mut writer = FastqWriter::new(&cli.output).unwrap();
+    let mut writer = FastqWriter::new(&cli.output)?;
 
     for _ in 0..cli.num_reads {
-        let read = generator.generate_read().unwrap();
-        writer.write_record(&read).unwrap();
+        let read = generator.generate_read()?;
+        writer.write_record(&read)?;
     }
+
+    Ok(())
 }
