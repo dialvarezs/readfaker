@@ -1,20 +1,20 @@
 use rand::Rng;
 use std::collections::BTreeMap;
 
-/// Empirical distribution of read lengths built from observed data.
+/// Empirical model of read lengths built from observed sequencing data.
 #[derive(Default)]
-pub struct LengthDistribution {
+pub struct LengthModel {
     length_histogram: BTreeMap<usize, usize>,
     total_count: usize,
 }
 
-impl LengthDistribution {
-    /// Creates a new empty length distribution.
+impl LengthModel {
+    /// Creates a new empty length model.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Adds an observed length to the distribution.
+    /// Adds an observed read length to the empirical model.
     ///
     /// # Arguments
     /// * `length` - Read length to add
@@ -26,13 +26,13 @@ impl LengthDistribution {
         self.total_count += 1;
     }
 
-    /// Samples a random length from the distribution.
+    /// Samples a random length from the empirical model.
     ///
     /// # Arguments
     /// * `rng` - Random number generator
     ///
     /// # Returns
-    /// A randomly sampled read length, or None if the distribution is empty
+    /// A randomly sampled read length, or None if the model is empty
     pub fn sample<R: Rng>(&self, rng: &mut R) -> Option<usize> {
         if self.total_count == 0 {
             return None;
@@ -60,7 +60,7 @@ mod tests {
 
     #[test]
     fn test_add_and_sample() {
-        let mut dist = LengthDistribution::new();
+        let mut dist = LengthModel::new();
         dist.add_value(100);
         dist.add_value(100);
         dist.add_value(200);
@@ -73,7 +73,7 @@ mod tests {
     #[test]
     fn test_deterministic_sampling() {
         // Verify that sampling is reproducible with same seed
-        let mut dist = LengthDistribution::new();
+        let mut dist = LengthModel::new();
         dist.add_value(50);
         dist.add_value(100);
         dist.add_value(150);

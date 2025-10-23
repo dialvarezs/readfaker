@@ -13,7 +13,7 @@ pub struct Cli {
     #[arg(short = 'r', long, value_name = "FASTA")]
     pub reference: PathBuf,
 
-    /// Input FASTQ file to extract quality and length distributions
+    /// Input FASTQ file to extract quality and length models
     #[arg(short = 'i', long, value_name = "FASTQ")]
     pub input: PathBuf,
 

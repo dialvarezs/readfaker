@@ -1,5 +1,5 @@
 pub mod cli;
-pub mod distributions;
+pub mod models;
 pub mod generator;
 pub mod io;
 pub mod utils;

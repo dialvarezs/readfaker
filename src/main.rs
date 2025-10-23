@@ -1,8 +1,9 @@
 use anyhow::Result;
 use clap::Parser;
 use readfaker::cli::Cli;
-use readfaker::generator::{load_distributions, ReadGenerator};
+use readfaker::generator::{load_models, ReadGenerator};
 use readfaker::io::{FastaReader, FastqWriter};
+use readfaker::models::ErrorModel;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -19,11 +20,13 @@ fn main() -> Result<()> {
         eprintln!("================================\n");
     }
 
-    let (length_distribution, quality_distribution) = load_distributions(&cli.input)?;
+    let (length_model, quality_model) = load_models(&cli.input)?;
+    let error_model = ErrorModel::new(None, None, None);
     let mut generator = ReadGenerator::new(
         FastaReader::read(&cli.reference)?,
-        length_distribution,
-        quality_distribution,
+        length_model,
+        quality_model,
+        error_model,
         cli.seed,
     )?;
     let mut writer = FastqWriter::new(&cli.output)?;

@@ -1,19 +1,19 @@
 use rand::Rng;
 use std::collections::HashMap;
 
-/// Empirical distribution of quality scores grouped by read length.
+/// Empirical model of quality scores built from observed reads, grouped by read length.
 #[derive(Default)]
-pub struct QualityDistribution {
+pub struct QualityModel {
     qualities_by_length: HashMap<usize, Vec<Vec<u8>>>,
 }
 
-impl QualityDistribution {
-    /// Creates a new empty quality distribution.
+impl QualityModel {
+    /// Creates a new empty quality model.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Adds observed quality scores to the distribution.
+    /// Adds observed quality scores to the empirical model.
     ///
     /// # Arguments
     /// * `length` - Length of the read
@@ -35,7 +35,7 @@ impl QualityDistribution {
     /// * `rng` - Random number generator
     ///
     /// # Returns
-    /// Quality score string, or None if distribution is empty
+    /// Quality score string, or None if model is empty
     pub fn sample<R: Rng>(&self, length: usize, rng: &mut R) -> Option<Vec<u8>> {
         // Try exact match first
         if let Some(qualities) = self.qualities_by_length.get(&length) {
@@ -63,7 +63,7 @@ mod tests {
 
     #[test]
     fn test_add_and_sample() {
-        let mut dist = QualityDistribution::new();
+        let mut dist = QualityModel::new();
         dist.add_value(5, vec![b'?'; 5]);
 
         let mut rng = StdRng::seed_from_u64(42);
@@ -78,7 +78,7 @@ mod tests {
     #[test]
     fn test_sample_fallback_to_closest() {
         // Test that sampling falls back to closest length when exact match not found
-        let mut dist = QualityDistribution::new();
+        let mut dist = QualityModel::new();
         dist.add_value(100, vec![b'I'; 100]); // Length 100
         dist.add_value(200, vec![b'J'; 200]); // Length 200
         dist.add_value(500, vec![b'K'; 500]); // Length 500
