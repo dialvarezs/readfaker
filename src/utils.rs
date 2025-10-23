@@ -11,7 +11,7 @@ pub static QUALITY_MAPPING: LazyLock<HashMap<u8, f32>> = LazyLock::new(|| {
         .collect()
 });
 
-/// Returns a random nucleotide different from the provided one.
+/// Returns random nucleotide different from the provided one.
 ///
 /// # Arguments
 /// * `nucleotide` - The nucleotide to exclude (as ASCII byte: b'A', b'C', b'G', or b'T')
