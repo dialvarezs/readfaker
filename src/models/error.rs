@@ -22,11 +22,6 @@ pub enum AlterationType {
 /// - All rates must be in the range [0.0, 1.0]
 /// - The sum of all rates must be ≤ 1.0
 /// - If the sum < 1.0, some errors will result in no alteration
-///
-/// # Default Rates
-/// - Substitution: 0.7 (70%)
-/// - Insertion: 0.1 (10%)
-/// - Deletion: 0.2 (20%)
 #[derive(Debug)]
 pub struct ErrorModel {
     pub substitution_rate: f64,
