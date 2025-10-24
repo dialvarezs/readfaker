@@ -1,11 +1,13 @@
 use crate::io::fasta::FastaRecord;
 use crate::io::FastqRecord;
+use crate::models::error::AlterationType;
 use crate::models::{ErrorModel, LengthModel, QualityModel};
 use crate::utils::QUALITY_MAPPING;
 use anyhow::{anyhow, Result};
 use rand::prelude::IndexedRandom;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
+
 const PHRED_OFFSET: u8 = 33;
 
 /// Generator for synthetic sequencing reads with realistic error profiles.
@@ -28,7 +30,7 @@ const PHRED_OFFSET: u8 = 33;
 /// length_model.add_value(100);
 /// let mut quality_model = QualityModel::new();
 /// quality_model.add_value(100, vec![b':'; 100]);
-/// let error_model = ErrorModel::new(None, None, None);
+/// let error_model = ErrorModel::new(None, None, None).unwrap();
 ///
 /// let mut generator = ReadGenerator::new(
 ///     references,
@@ -112,50 +114,106 @@ impl ReadGenerator {
 
             let max_start = reference_sequence.sequence.len() - length;
             let start_position = self.rng.random_range(0..=max_start);
-            let mut sequence =
+            let sequence =
                 reference_sequence.sequence[start_position..start_position + length].to_vec();
 
             let Some(qualities) = self.quality_model.sample(length, &mut self.rng) else {
                 continue; // Skip if no quality string available
             };
 
-            // Insert sequence nucleotide substitutions depending on error value
-            qualities
-                .iter()
-                .enumerate()
-                .for_each(|(i, &quality_ascii)| {
-                    let phred = usize::from(quality_ascii.saturating_sub(PHRED_OFFSET).min(93));
-                    let error_probability = QUALITY_MAPPING[phred];
-                    if self.rng.random_range(0.0..1.0) <= error_probability {
-                        sequence[i] = self.get_random_nucleotide(sequence[i]);
-                    }
-                });
+            let (final_sequence, final_qualities) = self.apply_errors(sequence, qualities);
 
             return Ok(FastqRecord {
                 id: format!("read_{}", self.rng.random::<u64>()),
-                sequence,
-                quality: qualities,
+                sequence: final_sequence,
+                quality: final_qualities,
             });
         }
     }
 
-    /// Returns random nucleotide different from the provided one.
+    /// Applies sequencing errors to a sequence based on quality scores and error model.
+    ///
+    /// For each position, uses the quality score to determine if an error occurs,
+    /// then uses the error model to determine the type of error (substitution, insertion, or deletion).
     ///
     /// # Arguments
-    /// * `nucleotide` - The nucleotide to exclude (as ASCII byte: b'A', b'C', b'G', or b'T')
-    /// * `rng` - Random number generator
+    /// * `sequence` - Original nucleotide sequence
+    /// * `qualities` - Quality scores for each position
     ///
     /// # Returns
-    /// A random nucleotide byte from {A, C, G, T} excluding the input nucleotide
-    fn get_random_nucleotide(&mut self, nucleotide: u8) -> u8 {
-        const NUCLEOTIDES: [u8; 4] = [b'A', b'C', b'G', b'T'];
-        let idx = NUCLEOTIDES
-            .iter()
-            .position(|&n| n == nucleotide)
-            .unwrap_or(0);
-        let offset = self.rng.random_range(1..=3);
+    /// Tuple of (modified sequence, modified quality scores)
+    fn apply_errors(&mut self, sequence: Vec<u8>, qualities: Vec<u8>) -> (Vec<u8>, Vec<u8>) {
+        let mut new_sequence = Vec::new();
+        let mut new_quality = Vec::new();
+        let mut i = 0;
 
-        NUCLEOTIDES[(idx + offset) % 4]
+        while i < sequence.len() {
+            let quality_ascii = qualities[i];
+            let phred = usize::from(quality_ascii.saturating_sub(PHRED_OFFSET).min(93));
+            let error_probability = QUALITY_MAPPING[phred];
+
+            if self.rng.random_range(0.0..1.0) <= error_probability {
+                let alteration = self.error_model.get_alteration_type(&mut self.rng);
+                match alteration {
+                    Some(AlterationType::Substitution) => {
+                        new_sequence.push(self.get_random_nucleotide(Some(sequence[i])));
+                        new_quality.push(quality_ascii);
+                    }
+                    Some(AlterationType::Insertion(count)) => {
+                        // Keep the original base, then insert `count` random nucleotides
+                        new_sequence.push(sequence[i]);
+                        new_quality.push(quality_ascii);
+
+                        for _ in 0..count {
+                            new_sequence.push(self.get_random_nucleotide(None));
+                            new_quality.push(quality_ascii); // Use the same quality for inserted bases
+                        }
+                    }
+                    Some(AlterationType::Deletion(count)) => {
+                        // Skip `count` positions
+                        i += count;
+                        continue;
+                    }
+                    _ => {}
+                }
+            } else {
+                // No error - keep the original base
+                new_sequence.push(sequence[i]);
+                new_quality.push(quality_ascii);
+            }
+
+            i += 1;
+        }
+
+        (new_sequence, new_quality)
+    }
+
+    /// Returns a random nucleotide, optionally excluding a specific one.
+    ///
+    /// # Arguments
+    /// * `exclude` - Optional nucleotide to exclude (as ASCII byte: b'A', b'C', b'G', or b'T')
+    ///   - `Some(nucleotide)` returns a different nucleotide
+    ///   - `None` returns any random nucleotide
+    ///
+    /// # Returns
+    /// A random nucleotide byte from {A, C, G, T}
+    fn get_random_nucleotide(&mut self, exclude: Option<u8>) -> u8 {
+        const NUCLEOTIDES: [u8; 4] = [b'A', b'C', b'G', b'T'];
+
+        match exclude {
+            Some(nucleotide) => {
+                let idx = NUCLEOTIDES
+                    .iter()
+                    .position(|&n| n == nucleotide)
+                    .unwrap_or(0);
+                let offset = self.rng.random_range(1..=3);
+                NUCLEOTIDES[(idx + offset) % 4]
+            }
+            None => {
+                let idx = self.rng.random_range(0..4);
+                NUCLEOTIDES[idx]
+            }
+        }
     }
 }
 
@@ -173,7 +231,7 @@ mod tests {
 
         let mut length_model = LengthModel::new();
         let mut quality_model = QualityModel::new();
-        let error_model = ErrorModel::new(None, None, None);
+        let error_model = ErrorModel::new(None, None, None).unwrap();
         length_model.add_value(10);
         quality_model.add_value(10, vec![b'?'; 10]); // Phred 30 as ASCII
 
@@ -211,8 +269,13 @@ mod tests {
     fn test_get_random_nucleotide() {
         let mut generator = create_test_generator(None).unwrap();
 
-        let result = generator.get_random_nucleotide(b'A');
+        // Test with exclusion (substitution)
+        let result = generator.get_random_nucleotide(Some(b'A'));
         assert_ne!(result, b'A');
         assert!(result == b'C' || result == b'G' || result == b'T');
+
+        // Test without exclusion (insertion)
+        let result = generator.get_random_nucleotide(None);
+        assert!(result == b'A' || result == b'C' || result == b'G' || result == b'T');
     }
 }
