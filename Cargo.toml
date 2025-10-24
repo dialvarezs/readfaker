@@ -1,10 +1,10 @@
 [package]
 name = "readfaker"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-clap = { version = "4.5.49", features = ["derive"] }
+clap = { version = "4.5.50", features = ["derive"] }
 needletail = "0.6.3"
 anyhow = "1.0.100"
 rand = "0.9.2"
