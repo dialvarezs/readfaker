@@ -143,43 +143,43 @@ impl ReadGenerator {
     /// # Returns
     /// Tuple of (modified sequence, modified quality scores)
     fn apply_errors(&mut self, sequence: Vec<u8>, qualities: Vec<u8>) -> (Vec<u8>, Vec<u8>) {
-        let mut new_sequence = Vec::new();
-        let mut new_quality = Vec::new();
-        let mut i = 0;
+        let mut new_sequence = Vec::with_capacity(sequence.len());
+        let mut new_quality = Vec::with_capacity(qualities.len());
 
+        let mut i = 0;
         while i < sequence.len() {
             let quality_ascii = qualities[i];
             let phred = usize::from(quality_ascii.saturating_sub(PHRED_OFFSET).min(93));
             let error_probability = QUALITY_MAPPING[phred];
-
-            if self.rng.random_range(0.0..1.0) <= error_probability {
-                let alteration = self.error_model.get_alteration_type(&mut self.rng);
-                match alteration {
-                    Some(AlterationType::Substitution) => {
-                        new_sequence.push(self.get_random_nucleotide(Some(sequence[i])));
-                        new_quality.push(quality_ascii);
-                    }
-                    Some(AlterationType::Insertion(count)) => {
-                        // Keep the original base, then insert `count` random nucleotides
-                        new_sequence.push(sequence[i]);
-                        new_quality.push(quality_ascii);
-
-                        for _ in 0..count {
-                            new_sequence.push(self.get_random_nucleotide(None));
-                            new_quality.push(quality_ascii); // Use the same quality for inserted bases
-                        }
-                    }
-                    Some(AlterationType::Deletion(count)) => {
-                        // Skip `count` positions
-                        i += count;
-                        continue;
-                    }
-                    _ => {}
-                }
+            let alteration = if self.rng.random_range(0.0..1.0) <= error_probability {
+                self.error_model.get_alteration_type(&mut self.rng)
             } else {
-                // No error - keep the original base
-                new_sequence.push(sequence[i]);
-                new_quality.push(quality_ascii);
+                None
+            };
+
+            match alteration {
+                Some(AlterationType::Substitution) => {
+                    new_sequence.push(self.get_random_nucleotide(Some(sequence[i])));
+                    new_quality.push(quality_ascii);
+                }
+                Some(AlterationType::Insertion(count)) => {
+                    new_sequence.push(sequence[i]);
+                    new_quality.push(quality_ascii);
+
+                    for _ in 0..count {
+                        new_sequence.push(self.get_random_nucleotide(None));
+                        new_quality.push(quality_ascii); // reuse the same quality for inserted bases
+                    }
+                }
+                Some(AlterationType::Deletion(count)) => {
+                    let skip = count.max(1).min(sequence.len() - i);
+                    i += skip;
+                    continue;
+                }
+                None => {
+                    new_sequence.push(sequence[i]);
+                    new_quality.push(quality_ascii);
+                }
             }
 
             i += 1;
