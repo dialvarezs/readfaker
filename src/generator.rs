@@ -1,14 +1,11 @@
 use crate::io::fasta::FastaRecord;
-use crate::io::fastq::FastqReader;
 use crate::io::FastqRecord;
 use crate::models::{ErrorModel, LengthModel, QualityModel};
-use crate::utils::{get_random_nucleotide, QUALITY_MAPPING};
+use crate::utils::QUALITY_MAPPING;
 use anyhow::{anyhow, Result};
 use rand::prelude::IndexedRandom;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use std::path::Path;
-
 const PHRED_OFFSET: u8 = 33;
 
 /// Generator for synthetic sequencing reads with realistic error profiles.
@@ -130,7 +127,7 @@ impl ReadGenerator {
                     let phred = usize::from(quality_ascii.saturating_sub(PHRED_OFFSET).min(93));
                     let error_probability = QUALITY_MAPPING[phred];
                     if self.rng.random_range(0.0..1.0) <= error_probability {
-                        sequence[i] = get_random_nucleotide(sequence[i], &mut self.rng);
+                        sequence[i] = self.get_random_nucleotide(sequence[i]);
                     }
                 });
 
@@ -141,43 +138,38 @@ impl ReadGenerator {
             });
         }
     }
-}
 
-/// Loads length and quality models from an existing FASTQ file.
-///
-/// Reads all records from the input file and builds empirical models
-/// for read lengths and quality scores.
-///
-/// # Arguments
-/// * `fastq_path` - Path to the FASTQ file to analyze
-///
-/// # Returns
-/// Tuple of (LengthModel, QualityModel) built from the input file
-pub fn load_models(fastq_path: &Path) -> Result<(LengthModel, QualityModel)> {
-    let mut length_model = LengthModel::new();
-    let mut quality_model = QualityModel::new();
+    /// Returns random nucleotide different from the provided one.
+    ///
+    /// # Arguments
+    /// * `nucleotide` - The nucleotide to exclude (as ASCII byte: b'A', b'C', b'G', or b'T')
+    /// * `rng` - Random number generator
+    ///
+    /// # Returns
+    /// A random nucleotide byte from {A, C, G, T} excluding the input nucleotide
+    fn get_random_nucleotide(&mut self, nucleotide: u8) -> u8 {
+        const NUCLEOTIDES: [u8; 4] = [b'A', b'C', b'G', b'T'];
+        let idx = NUCLEOTIDES
+            .iter()
+            .position(|&n| n == nucleotide)
+            .unwrap_or(0);
+        let offset = self.rng.random_range(1..=3);
 
-    let reader = FastqReader::from_path(fastq_path)?;
-
-    for record in reader {
-        let record = record?;
-        length_model.add_value(record.len());
-        quality_model.add_value(record.len(), record.quality);
+        NUCLEOTIDES[(idx + offset) % 4]
     }
-
-    Ok((length_model, quality_model))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_generate_read() {
-        let sequences = vec![FastaRecord {
-            id: "seq1".to_string(),
-            sequence: b"ACGTACGTACGTACGTACGTACGTACGTACGT".to_vec(),
-        }];
+    fn create_test_generator(sequences: Option<Vec<FastaRecord>>) -> Result<ReadGenerator> {
+        let sequences = sequences.unwrap_or_else(|| {
+            vec![FastaRecord {
+                id: "seq1".to_string(),
+                sequence: b"ACGTACGTACGTACGTACGTACGTACGTACGT".to_vec(),
+            }]
+        });
 
         let mut length_model = LengthModel::new();
         let mut quality_model = QualityModel::new();
@@ -185,14 +177,26 @@ mod tests {
         length_model.add_value(10);
         quality_model.add_value(10, vec![b'?'; 10]); // Phred 30 as ASCII
 
-        let mut generator = ReadGenerator::new(
+        ReadGenerator::new(
             sequences,
             length_model,
             quality_model,
             error_model,
             Some(42),
         )
-        .unwrap();
+    }
+
+    #[test]
+    fn test_empty_reference_sequences() {
+        let result = create_test_generator(Some(vec![]));
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert_eq!(err.to_string(), "Reference sequences cannot be empty");
+    }
+
+    #[test]
+    fn test_generate_read() {
+        let mut generator = create_test_generator(None).unwrap();
 
         // Generate multiple reads to verify the generator can be reused
         for _ in 0..5 {
@@ -204,21 +208,11 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_reference_sequences() {
-        let sequences = vec![]; // Empty!
-        let length_model = LengthModel::new();
-        let quality_model = QualityModel::new();
-        let error_model = ErrorModel::new(None, None, None);
+    fn test_get_random_nucleotide() {
+        let mut generator = create_test_generator(None).unwrap();
 
-        let result = ReadGenerator::new(
-            sequences,
-            length_model,
-            quality_model,
-            error_model,
-            Some(42),
-        );
-        assert!(result.is_err());
-        let err = result.err().unwrap();
-        assert_eq!(err.to_string(), "Reference sequences cannot be empty");
+        let result = generator.get_random_nucleotide(b'A');
+        assert_ne!(result, b'A');
+        assert!(result == b'C' || result == b'G' || result == b'T');
     }
 }

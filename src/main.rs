@@ -1,9 +1,10 @@
 use anyhow::Result;
 use clap::Parser;
 use readfaker::cli::Cli;
-use readfaker::generator::{load_models, ReadGenerator};
+use readfaker::generator::ReadGenerator;
 use readfaker::io::{FastaReader, FastqWriter};
 use readfaker::models::ErrorModel;
+use readfaker::utils::load_models;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();

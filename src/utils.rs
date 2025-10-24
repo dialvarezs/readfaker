@@ -1,4 +1,6 @@
-use rand::Rng;
+use crate::io::fastq::FastqReader;
+use crate::models::{LengthModel, QualityModel};
+use std::path::Path;
 use std::sync::LazyLock;
 
 /// Mapping of Phred quality scores (0-93) to error probabilities.
@@ -12,38 +14,34 @@ pub static QUALITY_MAPPING: LazyLock<[f32; 94]> = LazyLock::new(|| {
     mapping
 });
 
-/// Returns random nucleotide different from the provided one.
+/// Loads length and quality models from an existing FASTQ file.
+///
+/// Reads all records from the input file and builds empirical models
+/// for read lengths and quality scores.
 ///
 /// # Arguments
-/// * `nucleotide` - The nucleotide to exclude (as ASCII byte: b'A', b'C', b'G', or b'T')
-/// * `rng` - Random number generator
+/// * `fastq_path` - Path to the FASTQ file to analyze
 ///
 /// # Returns
-/// A random nucleotide byte from {A, C, G, T} excluding the input nucleotide
-pub fn get_random_nucleotide<R: Rng>(nucleotide: u8, rng: &mut R) -> u8 {
-    const NUCLEOTIDES: [u8; 4] = [b'A', b'C', b'G', b'T'];
-    let idx = NUCLEOTIDES
-        .iter()
-        .position(|&n| n == nucleotide)
-        .unwrap_or(0);
-    let offset = rng.random_range(1..=3);
+/// Tuple of (LengthModel, QualityModel) built from the input file
+pub fn load_models(fastq_path: &Path) -> anyhow::Result<(LengthModel, QualityModel)> {
+    let mut length_model = LengthModel::new();
+    let mut quality_model = QualityModel::new();
 
-    NUCLEOTIDES[(idx + offset) % 4]
+    let reader = FastqReader::from_path(fastq_path)?;
+
+    for record in reader {
+        let record = record?;
+        length_model.add_value(record.len());
+        quality_model.add_value(record.len(), record.quality);
+    }
+
+    Ok((length_model, quality_model))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::rngs::StdRng;
-    use rand::SeedableRng;
-
-    #[test]
-    fn test_get_random_nucleotide() {
-        let mut rng = StdRng::seed_from_u64(42);
-        let result = get_random_nucleotide(b'A', &mut rng);
-        assert_ne!(result, b'A');
-        assert!(result == b'C' || result == b'G' || result == b'T');
-    }
 
     #[test]
     fn test_quality_mapping() {

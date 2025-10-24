@@ -1,6 +1,6 @@
-const SUBSTITUTION_DEFAULT_RATE: f64 = 0.8;
+const SUBSTITUTION_DEFAULT_RATE: f64 = 0.7;
 const INSERTION_DEFAULT_RATE: f64 = 0.1;
-const DELETION_DEFAULT_RATE: f64 = 0.1;
+const DELETION_DEFAULT_RATE: f64 = 0.2;
 
 pub struct ErrorModel {
     pub substitution_rate: f64,
