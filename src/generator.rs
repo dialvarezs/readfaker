@@ -3,7 +3,7 @@ use crate::io::FastqRecord;
 use crate::models::error::AlterationType;
 use crate::models::{ErrorModel, LengthModel, QualityModel};
 use crate::utils::QUALITY_MAPPING;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use rand::prelude::IndexedRandom;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -71,7 +71,7 @@ impl ReadGenerator {
         seed: Option<u64>,
     ) -> Result<Self> {
         if reference_sequences.is_empty() {
-            anyhow::bail!("Reference sequences cannot be empty");
+            bail!("Reference sequences cannot be empty");
         }
 
         let rng = match seed {

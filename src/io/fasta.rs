@@ -1,6 +1,6 @@
 //! FASTA file reading using needletail.
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use needletail::{parse_fastx_file, Sequence};
 use std::path::Path;
 
@@ -39,7 +39,7 @@ impl FastaReader {
         }
 
         if records.is_empty() {
-            anyhow::bail!("No sequences found in FASTA file: {}", path.display());
+            bail!("No sequences found in FASTA file: {}", path.display());
         }
 
         Ok(records)
