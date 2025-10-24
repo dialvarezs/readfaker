@@ -13,8 +13,7 @@ const PHRED_OFFSET: u8 = 33;
 /// Generator for synthetic sequencing reads with realistic error profiles.
 ///
 /// Produces FASTQ records by sampling subsequences from reference genomes and applying
-/// sequencing errors based on quality score models. Designed for simulating
-/// contamination reads in genome assembly exercises.
+/// sequencing errors based on quality score models.
 ///
 /// # Example
 /// ```no_run
