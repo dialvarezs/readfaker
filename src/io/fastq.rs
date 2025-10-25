@@ -1,8 +1,9 @@
 //! FASTQ file reading and writing.
 
 use anyhow::{Context, Result};
-use bgzip::{BGZFWriter, Compression};
-use needletail::{parse_fastx_file, Sequence};
+use bgzip::Compression;
+use bgzip::write::BGZFMultiThreadWriter;
+use needletail::{Sequence, parse_fastx_file};
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -99,7 +100,7 @@ impl FastqReader {
 /// Internal writer implementation supporting both uncompressed and BGZF-compressed output.
 enum FastqWriterInner {
     Uncompressed(BufWriter<File>),
-    Compressed(BGZFWriter<File>),
+    Compressed(BGZFMultiThreadWriter<File>),
 }
 
 impl Write for FastqWriterInner {
@@ -166,7 +167,7 @@ impl FastqWriter {
             .with_context(|| format!("Failed to create FASTQ file: {}", path.display()))?;
 
         let writer = if should_bgzf_compress(path) {
-            FastqWriterInner::Compressed(BGZFWriter::new(file, Compression::default()))
+            FastqWriterInner::Compressed(BGZFMultiThreadWriter::new(file, Compression::default()))
         } else {
             FastqWriterInner::Uncompressed(BufWriter::new(file))
         };

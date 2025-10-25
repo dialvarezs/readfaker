@@ -1,7 +1,7 @@
 //! FASTA file reading using needletail.
 
-use anyhow::{bail, Context, Result};
-use needletail::{parse_fastx_file, Sequence};
+use anyhow::{Context, Result, bail};
+use needletail::{Sequence, parse_fastx_file};
 use std::path::Path;
 
 /// Represents a FASTA sequence with its ID and nucleotide sequence.

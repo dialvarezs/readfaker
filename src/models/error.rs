@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use rand::Rng;
 
 const SUBSTITUTION_DEFAULT_RATE: f64 = 0.7;
@@ -87,7 +87,10 @@ impl ErrorModel {
         if sum > 1.0 {
             bail!(
                 "Error rates must sum to at most 1.0 (got substitution={}, insertion={}, deletion={}, sum={})",
-                substitution, insertion, deletion, sum
+                substitution,
+                insertion,
+                deletion,
+                sum
             );
         }
 
@@ -132,8 +135,8 @@ impl ErrorModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::rngs::StdRng;
     use rand::SeedableRng;
+    use rand::rngs::StdRng;
 
     #[test]
     fn test_default_values() {
