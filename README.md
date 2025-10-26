@@ -27,6 +27,11 @@ to begin with).
 - Only generates modified sequences, not chimeras, junk reads and other types of artifacts.
 - No BAM files support.
 
+## Installation
+
+Go to the [Releases](https://github.com/dialvarezs/readfaker/releases) and download the latest binary for your
+platform.
+
 ## Usage
 
 ```bash
