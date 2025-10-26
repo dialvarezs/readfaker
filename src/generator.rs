@@ -235,7 +235,7 @@ mod tests {
         let mut length_model = LengthModel::new();
         let mut quality_model = QualityModel::new(None, None, None);
         let error_model = ErrorModel::new(None, None, None).unwrap();
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+        let mut rng = StdRng::seed_from_u64(42);
 
         length_model.add_value(10);
         quality_model.add_value(10, vec![b'?'; 10], &mut rng); // Phred 30 as ASCII
@@ -266,7 +266,12 @@ mod tests {
             let read = generator.generate_read().unwrap();
             assert_eq!(read.len(), 10);
             assert!(read.quality.iter().all(|&q| q >= PHRED_OFFSET));
-            assert!(read.id.starts_with("read_"));
+            // Verify the ID is a valid UUID
+            assert!(
+                Uuid::parse_str(&read.id).is_ok(),
+                "Expected valid UUID, got: {}",
+                read.id
+            );
         }
     }
 
