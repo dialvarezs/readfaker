@@ -7,7 +7,7 @@ from real FASTQ data.
 
 - Creates empirical models for read length and quality scores (quality scores are grouped by length batches).
 - Supports compressed input and output FASTQ files.
-- Fast: can generate a million reads in around a minute.
+- Fast: can generate a million reads under a minute.
 
 ## Motivation
 
