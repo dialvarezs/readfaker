@@ -7,7 +7,7 @@ from real FASTQ data.
 
 - Creates empirical models for read length and quality scores (quality scores are grouped by length batches).
 - Supports compressed input and output FASTQ files.
-- Fast: can generate a million reads under a minute.
+- Fast: can generate a million reads in under a minute.
 
 ## Motivation
 
@@ -23,7 +23,7 @@ to begin with).
 
 ## Current Limitations / Planned Improvements
 
-- Insertions and deletions are limited to one nucleotide length. Alteration ratios are fixed.
+- Insertions and deletions are limited to one nucleotide length. Alteration type (substitution, insertion, deletion) ratios are fixed.
 - Only generates modified sequences, not chimeras, junk reads and other types of artifacts.
 - No BAM files support.
 
