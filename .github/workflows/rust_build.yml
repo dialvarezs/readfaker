@@ -3,6 +3,11 @@ name: Rust CI
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/rust_build.yml"
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
