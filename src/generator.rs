@@ -7,6 +7,7 @@ use anyhow::{Result, anyhow, bail};
 use rand::prelude::IndexedRandom;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
+use uuid::Uuid;
 
 const PHRED_OFFSET: u8 = 33;
 
@@ -126,7 +127,7 @@ impl ReadGenerator {
             let (final_sequence, final_qualities) = self.apply_errors(sequence, qualities);
 
             return Ok(FastqRecord {
-                id: format!("read_{}", self.rng.random::<u64>()),
+                id: format!("{}", Uuid::new_v4()),
                 sequence: final_sequence,
                 quality: final_qualities,
             });
