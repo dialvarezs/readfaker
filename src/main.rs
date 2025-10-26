@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use readfaker::cli::Cli;
+use readfaker::cli::{fmt, Cli};
 use readfaker::generator::ReadGenerator;
 use readfaker::io::{FastaReader, FastqWriter};
 use readfaker::models::ErrorModel;
@@ -10,18 +10,22 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     if cli.verbose {
-        eprintln!("=== ReadFaker Configuration ===");
-        eprintln!("Reference: {}", cli.reference.display());
-        eprintln!("Input: {}", cli.input.display());
-        eprintln!("Output: {}", cli.output.display());
-        eprintln!("Number of reads: {}", cli.num_reads);
+        eprintln!("{}", fmt::header("ReadFaker Configuration"));
+        eprintln!("{}: {}", fmt::param_aligned("Reference", 16), cli.reference.display());
+        eprintln!("{}: {}", fmt::param_aligned("Input", 16), cli.input.display());
+        eprintln!("{}: {}", fmt::param_aligned("Output", 16), cli.output.display());
+        eprintln!("{}: {}", fmt::param_aligned("Number of reads", 16), cli.num_reads);
         if let Some(seed) = cli.seed {
-            eprintln!("Random seed: {}", seed);
+            eprintln!("{}: {}", fmt::param_aligned("Random seed", 16), seed);
         }
-        eprintln!("================================\n");
+        eprintln!();
     }
 
+    if cli.verbose {
+        eprintln!("{}", fmt::progress("Creating models from input FASTQ..."));
+    }
     let (length_model, quality_model) = load_models(&cli.input, cli.seed)?;
+
     let error_model = ErrorModel::new(None, None, None)?;
     let mut generator = ReadGenerator::new(
         FastaReader::read(&cli.reference)?,
@@ -32,9 +36,17 @@ fn main() -> Result<()> {
     )?;
     let mut writer = FastqWriter::new(&cli.output)?;
 
+    if cli.verbose {
+        eprintln!("{}", fmt::progress(format!("Generating {} reads...", cli.num_reads)));
+    }
+
     for _ in 0..cli.num_reads {
         let read = generator.generate_read()?;
         writer.write_record(&read)?;
+    }
+
+    if cli.verbose {
+        eprintln!("{}", fmt::success(format!("Output written to {}", cli.output.display())));
     }
 
     Ok(())

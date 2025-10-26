@@ -196,15 +196,15 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
 
         // Add quality strings at different lengths
-        model.add_value(50, vec![b'A'; 50], &mut rng);    // Bucket 0 (0-99)
-        model.add_value(150, vec![b'B'; 150], &mut rng);  // Bucket 1 (100-199)
-        model.add_value(350, vec![b'C'; 350], &mut rng);  // Bucket 3 (300-399)
+        model.add_value(50, vec![b'A'; 50], &mut rng); // Bucket 0 (0-99)
+        model.add_value(150, vec![b'B'; 150], &mut rng); // Bucket 1 (100-199)
+        model.add_value(350, vec![b'C'; 350], &mut rng); // Bucket 3 (300-399)
         model.add_value(25000, vec![b'D'; 25000], &mut rng); // Catch-all bucket
 
         // Verify buckets contain the expected reads
-        assert_eq!(model.batches[0].qualities.len(), 1);   // Bucket 0 has 1 read
-        assert_eq!(model.batches[1].qualities.len(), 1);   // Bucket 1 has 1 read
-        assert_eq!(model.batches[3].qualities.len(), 1);   // Bucket 3 has 1 read
+        assert_eq!(model.batches[0].qualities.len(), 1); // Bucket 0 has 1 read
+        assert_eq!(model.batches[1].qualities.len(), 1); // Bucket 1 has 1 read
+        assert_eq!(model.batches[3].qualities.len(), 1); // Bucket 3 has 1 read
         assert_eq!(model.batches.last().unwrap().qualities.len(), 1); // Catch-all has 1 read
     }
 
