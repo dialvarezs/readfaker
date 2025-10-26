@@ -21,7 +21,7 @@ fn main() -> Result<()> {
         eprintln!("================================\n");
     }
 
-    let (length_model, quality_model) = load_models(&cli.input)?;
+    let (length_model, quality_model) = load_models(&cli.input, cli.seed)?;
     let error_model = ErrorModel::new(None, None, None)?;
     let mut generator = ReadGenerator::new(
         FastaReader::read(&cli.reference)?,

@@ -20,6 +20,8 @@ const PHRED_OFFSET: u8 = 33;
 /// use readfaker::generator::ReadGenerator;
 /// use readfaker::models::{ErrorModel, LengthModel, QualityModel};
 /// use readfaker::io::fasta::FastaRecord;
+/// use rand::SeedableRng;
+/// use rand::rngs::StdRng;
 ///
 /// let references = vec![FastaRecord {
 ///     id: "ecoli".to_string(),
@@ -27,8 +29,9 @@ const PHRED_OFFSET: u8 = 33;
 /// }];
 /// let mut length_model = LengthModel::new();
 /// length_model.add_value(100);
-/// let mut quality_model = QualityModel::new();
-/// quality_model.add_value(100, vec![b':'; 100]);
+/// let mut quality_model = QualityModel::new(None, None, None);
+/// let mut rng = StdRng::seed_from_u64(42);
+/// quality_model.add_value(100, vec![b':'; 100], &mut rng);
 /// let error_model = ErrorModel::new(None, None, None).unwrap();
 ///
 /// let mut generator = ReadGenerator::new(
@@ -229,10 +232,12 @@ mod tests {
         });
 
         let mut length_model = LengthModel::new();
-        let mut quality_model = QualityModel::new();
+        let mut quality_model = QualityModel::new(None, None, None);
         let error_model = ErrorModel::new(None, None, None).unwrap();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
         length_model.add_value(10);
-        quality_model.add_value(10, vec![b'?'; 10]); // Phred 30 as ASCII
+        quality_model.add_value(10, vec![b'?'; 10], &mut rng); // Phred 30 as ASCII
 
         ReadGenerator::new(
             sequences,

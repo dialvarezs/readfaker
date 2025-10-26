@@ -1,5 +1,7 @@
 use crate::io::fastq::FastqReader;
 use crate::models::{LengthModel, QualityModel};
+use rand::SeedableRng;
+use rand::rngs::StdRng;
 use std::path::Path;
 use std::sync::LazyLock;
 
@@ -24,16 +26,24 @@ pub static QUALITY_MAPPING: LazyLock<[f32; 94]> = LazyLock::new(|| {
 ///
 /// # Returns
 /// Tuple of (LengthModel, QualityModel) built from the input file
-pub fn load_models(fastq_path: &Path) -> anyhow::Result<(LengthModel, QualityModel)> {
+pub fn load_models(
+    fastq_path: &Path,
+    seed: Option<u64>,
+) -> anyhow::Result<(LengthModel, QualityModel)> {
     let mut length_model = LengthModel::new();
-    let mut quality_model = QualityModel::new();
+    let mut quality_model = QualityModel::new(None, None, None);
+
+    let mut rng = match seed {
+        Some(s) => StdRng::seed_from_u64(s),
+        None => StdRng::from_rng(&mut rand::rng()),
+    };
 
     let reader = FastqReader::from_path(fastq_path)?;
 
     for record in reader {
         let record = record?;
         length_model.add_value(record.len());
-        quality_model.add_value(record.len(), record.quality);
+        quality_model.add_value(record.len(), record.quality, &mut rng);
     }
 
     Ok((length_model, quality_model))
