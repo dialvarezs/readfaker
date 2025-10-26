@@ -23,6 +23,7 @@ pub static QUALITY_MAPPING: LazyLock<[f32; 94]> = LazyLock::new(|| {
 ///
 /// # Arguments
 /// * `fastq_path` - Path to the FASTQ file to analyze
+/// * `seed` - Optional random seed for reproducibility (uses system entropy if None)
 ///
 /// # Returns
 /// Tuple of (LengthModel, QualityModel) built from the input file

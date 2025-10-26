@@ -11,17 +11,21 @@ from real FASTQ data.
 
 ## Motivation
 
-Oxford Nanopore data quality depends on many factors: mainly the kit used, model version, and model precision.
-These last two change quite often, making it challenging to simulate realistic data with fixed parameters.
+Oxford Nanopore data quality depends on many factors, such as the kit used, basecalling model version, and model
+precision level.
+Basecalling models keep improving quite often, making it challenging to simulate realistic data with fixed parameters.
 
 This tool takes a different approach: instead of hardcoded models, it extracts length and quality profiles directly from
 your real data, ensuring the simulated reads match the characteristics of actual sequencing runs.
 
-## Limitations
+This is particularly useful for artificially contaminating real data for testing purposes (the reason I wrote this tool
+to begin with).
+
+## Current Limitations / Planned Improvements
 
 - Insertions and deletions are limited to one nucleotide length. Alteration ratios are fixed.
 - Only generates modified sequences, not chimeras, junk reads and other types of artifacts.
-- No BAM file support.
+- No BAM files support.
 
 ## Usage
 
