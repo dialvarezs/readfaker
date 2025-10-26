@@ -1,6 +1,7 @@
 on:
   release:
-    types: [created]
+    types: [ created ]
+  workflow_dispatch:
 
 jobs:
   release:
@@ -9,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [x86_64-pc-windows-gnu, x86_64-unknown-linux-musl]
+        target: [ x86_64-pc-windows-gnu, x86_64-unknown-linux-musl ]
     steps:
       - uses: actions/checkout@v5
       - name: Compile and release
@@ -19,3 +20,4 @@ jobs:
         with:
           RUSTTARGET: ${{ matrix.target }}
           EXTRA_FILES: "README.md LICENSE"
+          TOOLCHAIN_VERSION: "1.90"
