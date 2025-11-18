@@ -41,6 +41,18 @@ pub struct Cli {
     #[arg(short = 's', long)]
     pub seed: Option<u64>,
 
+    /// Error substitution rate (default: 0.7)
+    #[arg(long, value_name = "RATE")]
+    pub error_sub: Option<f64>,
+
+    /// Error insertion rate (default: 0.1)
+    #[arg(long, value_name = "RATE")]
+    pub error_ins: Option<f64>,
+
+    /// Error deletion rate (default: 0.2)
+    #[arg(long, value_name = "RATE")]
+    pub error_del: Option<f64>,
+
     /// Enable verbose output
     #[arg(short, long)]
     pub verbose: bool,

@@ -26,7 +26,16 @@ fn main() -> Result<()> {
     }
     let (length_model, quality_model) = load_models(&cli.input, cli.seed)?;
 
-    let error_model = ErrorModel::new(None, None, None)?;
+    let error_model = ErrorModel::new(cli.error_sub, cli.error_ins, cli.error_del)?;
+
+    if cli.verbose {
+        eprintln!("Error Model Configuration:");
+        eprintln!("{}: {:.2}", fmt::param_aligned("Substitution rate", 20), error_model.substitution_rate);
+        eprintln!("{}: {:.2}", fmt::param_aligned("Insertion rate", 20), error_model.insertion_rate);
+        eprintln!("{}: {:.2}", fmt::param_aligned("Deletion rate", 20), error_model.deletion_rate);
+        eprintln!();
+    }
+
     let mut generator = ReadGenerator::new(
         FastaReader::read(&cli.reference)?,
         length_model,
