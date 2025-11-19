@@ -33,7 +33,7 @@ const PHRED_OFFSET: u8 = 33;
 /// let mut quality_model = QualityModel::new(None, None, None);
 /// let mut rng = StdRng::seed_from_u64(42);
 /// quality_model.add_value(100, vec![b':'; 100], &mut rng);
-/// let error_model = ErrorModel::new(None, None, None).unwrap();
+/// let error_model = ErrorModel::new(None, None, None, None, None).unwrap();
 ///
 /// let mut generator = ReadGenerator::new(
 ///     references,
@@ -234,7 +234,7 @@ mod tests {
 
         let mut length_model = LengthModel::new();
         let mut quality_model = QualityModel::new(None, None, None);
-        let error_model = ErrorModel::new(None, None, None).unwrap();
+        let error_model = ErrorModel::new(None, None, None, None, None).unwrap();
         let mut rng = StdRng::seed_from_u64(42);
 
         length_model.add_value(10);

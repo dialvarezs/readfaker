@@ -53,6 +53,14 @@ pub struct Cli {
     #[arg(long, value_name = "RATE")]
     pub error_del: Option<f64>,
 
+    /// Error insertion extension rate (default: 0.4)
+    #[arg(long, value_name = "RATE")]
+    pub error_ins_ext: Option<f64>,
+
+    /// Error deletion extension rate (default: 0.4)
+    #[arg(long, value_name = "RATE")]
+    pub error_del_ext: Option<f64>,
+
     /// Enable verbose output
     #[arg(short, long)]
     pub verbose: bool,

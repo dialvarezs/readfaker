@@ -26,13 +26,21 @@ fn main() -> Result<()> {
     }
     let (length_model, quality_model) = load_models(&cli.input, cli.seed)?;
 
-    let error_model = ErrorModel::new(cli.error_sub, cli.error_ins, cli.error_del)?;
+    let error_model = ErrorModel::new(
+        cli.error_sub,
+        cli.error_ins,
+        cli.error_del,
+        cli.error_ins_ext,
+        cli.error_del_ext,
+    )?;
 
     if cli.verbose {
         eprintln!("Error Model Configuration:");
         eprintln!("{}: {:.2}", fmt::param_aligned("Substitution rate", 20), error_model.substitution_rate);
         eprintln!("{}: {:.2}", fmt::param_aligned("Insertion rate", 20), error_model.insertion_rate);
         eprintln!("{}: {:.2}", fmt::param_aligned("Deletion rate", 20), error_model.deletion_rate);
+        eprintln!("{}: {:.2}", fmt::param_aligned("Ins. extension rate", 20), error_model.insertion_extension_rate);
+        eprintln!("{}: {:.2}", fmt::param_aligned("Del. extension rate", 20), error_model.deletion_extension_rate);
         eprintln!();
     }
 
