@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use readfaker::cli::{fmt, Cli};
+use readfaker::cli::{Cli, fmt};
 use readfaker::generator::ReadGenerator;
 use readfaker::io::{FastaReader, FastqWriter};
 use readfaker::models::ErrorModel;
@@ -11,10 +11,26 @@ fn main() -> Result<()> {
 
     if cli.verbose {
         eprintln!("{}", fmt::header("ReadFaker Configuration"));
-        eprintln!("{}: {}", fmt::param_aligned("Reference", 16), cli.reference.display());
-        eprintln!("{}: {}", fmt::param_aligned("Input", 16), cli.input.display());
-        eprintln!("{}: {}", fmt::param_aligned("Output", 16), cli.output.display());
-        eprintln!("{}: {}", fmt::param_aligned("Number of reads", 16), cli.num_reads);
+        eprintln!(
+            "{}: {}",
+            fmt::param_aligned("Reference", 16),
+            cli.reference.display()
+        );
+        eprintln!(
+            "{}: {}",
+            fmt::param_aligned("Input", 16),
+            cli.input.display()
+        );
+        eprintln!(
+            "{}: {}",
+            fmt::param_aligned("Output", 16),
+            cli.output.display()
+        );
+        eprintln!(
+            "{}: {}",
+            fmt::param_aligned("Number of reads", 16),
+            cli.num_reads
+        );
         if let Some(seed) = cli.seed {
             eprintln!("{}: {}", fmt::param_aligned("Random seed", 16), seed);
         }
@@ -36,11 +52,31 @@ fn main() -> Result<()> {
 
     if cli.verbose {
         eprintln!("Error Model Configuration:");
-        eprintln!("{}: {:.2}", fmt::param_aligned("Substitution rate", 20), error_model.substitution_rate);
-        eprintln!("{}: {:.2}", fmt::param_aligned("Insertion rate", 20), error_model.insertion_rate);
-        eprintln!("{}: {:.2}", fmt::param_aligned("Deletion rate", 20), error_model.deletion_rate);
-        eprintln!("{}: {:.2}", fmt::param_aligned("Ins. extension rate", 20), error_model.insertion_extension_rate);
-        eprintln!("{}: {:.2}", fmt::param_aligned("Del. extension rate", 20), error_model.deletion_extension_rate);
+        eprintln!(
+            "{}: {:.2}",
+            fmt::param_aligned("Substitution rate", 20),
+            error_model.substitution_rate
+        );
+        eprintln!(
+            "{}: {:.2}",
+            fmt::param_aligned("Insertion rate", 20),
+            error_model.insertion_rate
+        );
+        eprintln!(
+            "{}: {:.2}",
+            fmt::param_aligned("Deletion rate", 20),
+            error_model.deletion_rate
+        );
+        eprintln!(
+            "{}: {:.2}",
+            fmt::param_aligned("Ins. extension rate", 20),
+            error_model.insertion_extension_rate
+        );
+        eprintln!(
+            "{}: {:.2}",
+            fmt::param_aligned("Del. extension rate", 20),
+            error_model.deletion_extension_rate
+        );
         eprintln!();
     }
 
@@ -51,10 +87,13 @@ fn main() -> Result<()> {
         error_model,
         cli.seed,
     )?;
-    let mut writer = FastqWriter::new(&cli.output)?;
+    let mut writer = FastqWriter::new(&cli.output, cli.compression_threads)?;
 
     if cli.verbose {
-        eprintln!("{}", fmt::progress(format!("Generating {} reads...", cli.num_reads)));
+        eprintln!(
+            "{}",
+            fmt::progress(format!("Generating {} reads...", cli.num_reads))
+        );
     }
 
     for _ in 0..cli.num_reads {
@@ -62,8 +101,14 @@ fn main() -> Result<()> {
         writer.write_record(&read)?;
     }
 
+    // Properly finish the writer to shutdown compression threads
+    writer.finish()?;
+
     if cli.verbose {
-        eprintln!("{}", fmt::success(format!("Output written to {}", cli.output.display())));
+        eprintln!(
+            "{}",
+            fmt::success(format!("Output written to {}", cli.output.display()))
+        );
     }
 
     Ok(())

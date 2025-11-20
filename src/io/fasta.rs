@@ -1,7 +1,9 @@
-//! FASTA file reading using needletail.
+//! FASTA file reading.
 
 use anyhow::{Context, Result, bail};
-use needletail::{Sequence, parse_fastx_file};
+use noodles::fasta;
+use std::fs::File;
+use std::io::BufReader;
 use std::path::Path;
 
 /// Represents a FASTA sequence with its ID and nucleotide sequence.
@@ -25,15 +27,16 @@ impl FastaReader {
     pub fn read(path: &Path) -> Result<Vec<FastaRecord>> {
         let mut records = Vec::new();
 
-        let mut reader = parse_fastx_file(path)
+        let file = File::open(path)
             .with_context(|| format!("Failed to open FASTA file: {}", path.display()))?;
+        let mut reader = fasta::io::Reader::new(BufReader::new(file));
 
-        while let Some(record) = reader.next() {
-            let record = record
+        for result in reader.records() {
+            let record = result
                 .with_context(|| format!("Failed to parse FASTA record in {}", path.display()))?;
 
-            let id = String::from_utf8_lossy(record.id()).to_string();
-            let sequence = record.normalize(false).to_vec();
+            let id = String::from_utf8_lossy(record.name()).to_string();
+            let sequence = record.sequence().as_ref().to_vec();
 
             records.push(FastaRecord { id, sequence });
         }

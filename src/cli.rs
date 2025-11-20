@@ -41,6 +41,10 @@ pub struct Cli {
     #[arg(short = 's', long)]
     pub seed: Option<u64>,
 
+    /// Number of compression threads (default: 4)
+    #[arg(long = "compression-threads", value_name = "4")]
+    pub compression_threads: Option<usize>,
+
     /// Error substitution rate (default: 0.7)
     #[arg(long, value_name = "RATE")]
     pub error_sub: Option<f64>,
@@ -80,7 +84,11 @@ pub mod fmt {
 
     /// Format a parameter with proper alignment (width must account for raw text length)
     pub fn param_aligned(text: &str, width: usize) -> String {
-        format!("{:<width$}", style(text).bold(), width = width + style(text).to_string().len() - text.len())
+        format!(
+            "{:<width$}",
+            style(text).bold(),
+            width = width + style(text).to_string().len() - text.len()
+        )
     }
 
     pub fn progress(text: impl Display) -> String {
