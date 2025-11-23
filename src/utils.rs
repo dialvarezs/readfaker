@@ -41,44 +41,49 @@ pub fn load_models(
         None => StdRng::from_rng(&mut rand::rng()),
     };
 
-    // Detect file format based on extension
-    let extension = input_path
-        .extension()
+    // Detect file format based on file name (handles compound extensions like .fastq.gz)
+    let file_name = input_path
+        .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or("");
 
-    match extension.to_lowercase().as_str() {
-        "bam" => {
-            let reader = BamReader::from_path(input_path)?;
-            for record in reader {
-                let record = record?;
-                let length = record.sequence().len();
-                // Convert raw Phred scores (0-93) to Phred+33 ASCII encoding
-                let quality: Vec<u8> = record
-                    .quality_scores()
-                    .as_ref()
-                    .iter()
-                    .map(|&q| q.saturating_add(33))
-                    .collect();
-                length_model.add_value(length);
-                quality_model.add_value(length, quality, &mut rng);
-            }
+    let file_name_lower = file_name.to_lowercase();
+
+    // Strip compression extensions to get base extension
+    let base_name = file_name_lower
+        .strip_suffix(".gz")
+        .or_else(|| file_name_lower.strip_suffix(".bgz"))
+        .unwrap_or(&file_name_lower);
+
+    if base_name.ends_with(".bam") {
+        let reader = BamReader::from_path(input_path)?;
+        for record in reader {
+            let record = record?;
+            let length = record.sequence().len();
+            // Convert raw Phred scores (0-93) to Phred+33 ASCII encoding
+            let quality: Vec<u8> = record
+                .quality_scores()
+                .as_ref()
+                .iter()
+                .map(|&q| q.saturating_add(33))
+                .collect();
+            length_model.add_value(length);
+            quality_model.add_value(length, quality, &mut rng);
         }
-        "fastq" | "fq" | "gz" | "bgz" | "bgzf" => {
-            let reader = FastqReader::from_path(input_path)?;
-            for record in reader {
-                let record = record?;
-                let length = record.sequence().len();
-                let quality = record.quality_scores().to_vec();
-                length_model.add_value(length);
-                quality_model.add_value(length, quality, &mut rng);
-            }
+    }
+    else if base_name.ends_with(".fastq") || base_name.ends_with(".fq") {
+        let reader = FastqReader::from_path(input_path)?;
+        for record in reader {
+            let record = record?;
+            let length = record.sequence().len();
+            let quality = record.quality_scores().to_vec();
+            length_model.add_value(length);
+            quality_model.add_value(length, quality, &mut rng);
         }
-        _ => {
-            anyhow::bail!(
-                "Unsupported input file format. Expected .fastq, .fq, .bam, or compressed variants (.gz, .bgz, .bgzf)"
-            );
-        }
+    } else {
+        anyhow::bail!(
+            "Unsupported input file format. Expected .fastq, .fq, or .bam (optionally compressed with .gz, .bgz)"
+        );
     }
 
     Ok((length_model, quality_model))

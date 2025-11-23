@@ -93,7 +93,8 @@ fn main() -> Result<()> {
         .output
         .extension()
         .and_then(|s| s.to_str())
-        .unwrap_or("");
+        .unwrap_or("")
+        .to_lowercase();
 
     if cli.verbose {
         eprintln!(

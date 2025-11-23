@@ -229,7 +229,7 @@ fn should_compress(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
         .is_some_and(|ext| {
-            ["gz", "bgz", "bgzf"]
+            ["gz", "bgz"]
                 .iter()
                 .any(|s| ext.eq_ignore_ascii_case(s))
         })
@@ -313,7 +313,6 @@ mod tests {
     fn test_should_bgzf_compress_suffixes() {
         assert!(should_compress(Path::new("reads.fastq.gz")));
         assert!(should_compress(Path::new("reads.fastq.bgz")));
-        assert!(should_compress(Path::new("reads.fastq.bgzf")));
         assert!(should_compress(Path::new("reads.GZ")));
         assert!(!should_compress(Path::new("reads.fastq")));
     }
