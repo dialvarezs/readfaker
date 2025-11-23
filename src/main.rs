@@ -104,7 +104,7 @@ fn main() -> Result<()> {
 
     match output_ext.to_lowercase().as_str() {
         "bam" => {
-            let mut writer = BamWriter::new(&cli.output)?;
+            let mut writer = BamWriter::new(&cli.output, cli.compression_threads)?;
             for _ in 0..cli.num_reads {
                 let read = generator.generate_read()?;
                 let name = std::str::from_utf8(read.name()).unwrap_or("unknown");
