@@ -107,7 +107,7 @@ fn main() -> Result<()> {
             let mut writer = BamWriter::new(&cli.output)?;
             for _ in 0..cli.num_reads {
                 let read = generator.generate_read()?;
-                let name = std::str::from_utf8(read.name()).unwrap_or("unknown");
+                let name = std::str::from_utf8(read.name()).expect("UUID should be valid UTF-8");
                 writer.write_record(name, read.sequence(), read.quality_scores())?;
             }
             writer.finish()?;

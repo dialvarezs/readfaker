@@ -1,6 +1,6 @@
 //! I/O module for reading and writing sequence files.
 //!
-//! Provides readers and writers for FASTA and FASTQ file formats.
+//! Provides readers and writers for FASTA, FASTQ, and BAM file formats.
 
 pub mod bam;
 pub mod fasta;
