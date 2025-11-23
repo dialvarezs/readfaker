@@ -121,13 +121,13 @@ impl FastqWriterInner {
 /// use std::path::PathBuf;
 ///
 /// // Uncompressed output
-/// let mut writer = FastqWriter::new(&PathBuf::from("output.fastq"), None)?;
+/// let mut writer = FastqWriter::new(&PathBuf::from("output.fastq"), 4)?;
 ///
 /// // Compressed output (BGZF) with auto-detected threads
-/// let mut writer_gz = FastqWriter::new(&PathBuf::from("output.fastq.gz"), None)?;
+/// let mut writer_gz = FastqWriter::new(&PathBuf::from("output.fastq.gz"), 0)?;
 ///
 /// // Compressed output with 4 threads
-/// let mut writer_4t = FastqWriter::new(&PathBuf::from("output.fastq.gz"), Some(4))?;
+/// let mut writer_4t = FastqWriter::new(&PathBuf::from("output.fastq.gz"), 4)?;
 ///
 /// let record = fastq::Record::new(
 ///     fastq::record::Definition::new("read1", ""),
@@ -151,18 +151,20 @@ impl FastqWriter {
     ///
     /// # Arguments
     /// * `path` - Path to the output FASTQ file
-    /// * `compression_threads` - Optional number of compression threads (None = auto-detect)
-    pub fn new(path: &PathBuf, compression_threads: Option<usize>) -> Result<Self> {
+    /// * `compression_threads` - Number of compression threads (0 = auto-detect)
+    pub fn new(path: &PathBuf, compression_threads: usize) -> Result<Self> {
         let file = File::create(path)
             .with_context(|| format!("Failed to create FASTQ file: {}", path.display()))?;
 
         let writer = if should_compress(path) {
             // Use specified threads or auto-detect CPU cores
-            let worker_count = compression_threads.unwrap_or_else(|| {
+            let worker_count = if compression_threads == 0 {
                 std::thread::available_parallelism()
                     .map(|n| n.get())
                     .unwrap_or(4) // Fallback to 4 threads
-            });
+            } else {
+                compression_threads
+            };
 
             let bgzf_writer = bgzf::io::MultithreadedWriter::with_worker_count(
                 std::num::NonZero::new(worker_count).unwrap(),
@@ -243,7 +245,7 @@ mod tests {
         let temp_file = temp_dir.join("test.fastq");
 
         {
-            let mut writer = FastqWriter::new(&temp_file, None).unwrap();
+            let mut writer = FastqWriter::new(&temp_file, 4).unwrap();
             let record = fastq::Record::new(
                 fastq::record::Definition::new("read1", ""),
                 b"ACGT",
@@ -266,7 +268,7 @@ mod tests {
         std::fs::remove_file(&temp_file).ok();
 
         {
-            let mut writer = FastqWriter::new(&temp_file, None).unwrap();
+            let mut writer = FastqWriter::new(&temp_file, 4).unwrap();
             let record1 = fastq::Record::new(
                 fastq::record::Definition::new("read1", ""),
                 b"ACGT",
