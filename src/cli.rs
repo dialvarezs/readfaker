@@ -42,7 +42,7 @@ pub struct Cli {
     pub seed: Option<u64>,
 
     /// Number of compression threads (default: 4)
-    #[arg(long = "compression-threads", value_name = "4")]
+    #[arg(long = "compression-threads", default_value = "4")]
     pub compression_threads: Option<usize>,
 
     /// Error substitution rate (default: 0.7)
