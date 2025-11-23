@@ -70,8 +70,7 @@ pub fn load_models(
             length_model.add_value(length);
             quality_model.add_value(length, quality, &mut rng);
         }
-    }
-    else if base_name.ends_with(".fastq") || base_name.ends_with(".fq") {
+    } else if base_name.ends_with(".fastq") || base_name.ends_with(".fq") {
         let reader = FastqReader::from_path(input_path)?;
         for record in reader {
             let record = record?;

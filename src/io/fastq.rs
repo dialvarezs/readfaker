@@ -228,11 +228,7 @@ fn is_gzip_compressed<R: std::io::Read>(reader: &mut BufReader<R>) -> Result<boo
 fn should_compress(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| {
-            ["gz", "bgz"]
-                .iter()
-                .any(|s| ext.eq_ignore_ascii_case(s))
-        })
+        .is_some_and(|ext| ["gz", "bgz"].iter().any(|s| ext.eq_ignore_ascii_case(s)))
 }
 
 #[cfg(test)]

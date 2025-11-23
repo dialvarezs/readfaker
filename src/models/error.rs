@@ -6,6 +6,7 @@ const INSERTION_DEFAULT_RATE: f64 = 0.1;
 const DELETION_DEFAULT_RATE: f64 = 0.2;
 const INSERTION_EXTENSION_DEFAULT_RATE: f64 = 0.4;
 const DELETION_EXTENSION_DEFAULT_RATE: f64 = 0.4;
+const EXTENSION_LIMIT: usize = 100;
 
 /// Type of sequencing error alteration applied to a nucleotide position.
 #[derive(Debug)]
@@ -134,7 +135,7 @@ impl ErrorModel {
         let mut length = 1;
         // Simple geometric sampling: keep extending while random < rate
         // If rate is 0.0, this loop never runs, returns 1
-        while rng.random_range(0.0..1.0) < extension_rate {
+        while rng.random_range(0.0..1.0) < extension_rate && length <= EXTENSION_LIMIT {
             length += 1;
         }
         length
