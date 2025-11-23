@@ -25,12 +25,12 @@ pub struct Cli {
     #[arg(short = 'r', long, value_name = "FASTA")]
     pub reference: PathBuf,
 
-    /// Input FASTQ file to extract quality and length models
-    #[arg(short = 'i', long, value_name = "FASTQ")]
+    /// Input file to extract quality and length models (FASTQ or BAM)
+    #[arg(short = 'i', long, value_name = "FILE")]
     pub input: PathBuf,
 
-    /// Output FASTQ file for simulated reads
-    #[arg(short = 'o', long, value_name = "FASTQ")]
+    /// Output file for simulated reads (FASTQ or BAM, detected by extension)
+    #[arg(short = 'o', long, value_name = "FILE")]
     pub output: PathBuf,
 
     /// Number of reads to generate

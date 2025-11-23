@@ -2,9 +2,11 @@
 //!
 //! Provides readers and writers for FASTA and FASTQ file formats.
 
+pub mod bam;
 pub mod fasta;
 pub mod fastq;
 
 // Re-export main types
+pub use bam::{BamReader, BamWriter};
 pub use fasta::FastaReader;
-pub use fastq::{FastqRecord, FastqWriter};
+pub use fastq::FastqWriter;

@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use readfaker::cli::{Cli, fmt};
 use readfaker::generator::ReadGenerator;
-use readfaker::io::{FastaReader, FastqWriter};
+use readfaker::io::{BamWriter, FastaReader, FastqWriter};
 use readfaker::models::ErrorModel;
 use readfaker::utils::load_models;
 
@@ -87,7 +87,13 @@ fn main() -> Result<()> {
         error_model,
         cli.seed,
     )?;
-    let mut writer = FastqWriter::new(&cli.output, cli.compression_threads)?;
+
+    // Detect output format based on extension
+    let output_ext = cli
+        .output
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
 
     if cli.verbose {
         eprintln!(
@@ -96,13 +102,26 @@ fn main() -> Result<()> {
         );
     }
 
-    for _ in 0..cli.num_reads {
-        let read = generator.generate_read()?;
-        writer.write_record(&read)?;
+    match output_ext.to_lowercase().as_str() {
+        "bam" => {
+            let mut writer = BamWriter::new(&cli.output)?;
+            for _ in 0..cli.num_reads {
+                let read = generator.generate_read()?;
+                let name = std::str::from_utf8(read.name()).unwrap_or("unknown");
+                writer.write_record(name, read.sequence(), read.quality_scores())?;
+            }
+            writer.finish()?;
+        }
+        _ => {
+            // Default to FASTQ for all other extensions
+            let mut writer = FastqWriter::new(&cli.output, cli.compression_threads)?;
+            for _ in 0..cli.num_reads {
+                let read = generator.generate_read()?;
+                writer.write_record(&read)?;
+            }
+            writer.finish()?;
+        }
     }
-
-    // Properly finish the writer to shutdown compression threads
-    writer.finish()?;
 
     if cli.verbose {
         eprintln!(

@@ -1,3 +1,4 @@
+use crate::io::bam::BamReader;
 use crate::io::fastq::FastqReader;
 use crate::models::{LengthModel, QualityModel};
 use rand::SeedableRng;
@@ -16,19 +17,20 @@ pub static QUALITY_MAPPING: LazyLock<[f32; 94]> = LazyLock::new(|| {
     mapping
 });
 
-/// Loads length and quality models from an existing FASTQ file.
+/// Loads length and quality models from an existing FASTQ or BAM file.
 ///
+/// Automatically detects the file format based on the extension (.fastq, .fq, .bam).
 /// Reads all records from the input file and builds empirical models
 /// for read lengths and quality scores.
 ///
 /// # Arguments
-/// * `fastq_path` - Path to the FASTQ file to analyze
+/// * `input_path` - Path to the FASTQ or BAM file to analyze
 /// * `seed` - Optional random seed for reproducibility (uses system entropy if None)
 ///
 /// # Returns
 /// Tuple of (LengthModel, QualityModel) built from the input file
 pub fn load_models(
-    fastq_path: &Path,
+    input_path: &Path,
     seed: Option<u64>,
 ) -> anyhow::Result<(LengthModel, QualityModel)> {
     let mut length_model = LengthModel::new();
@@ -39,14 +41,44 @@ pub fn load_models(
         None => StdRng::from_rng(&mut rand::rng()),
     };
 
-    let reader = FastqReader::from_path(fastq_path)?;
+    // Detect file format based on extension
+    let extension = input_path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
 
-    for record in reader {
-        let record = record?;
-        let length = record.sequence().len();
-        let quality = record.quality_scores().to_vec();
-        length_model.add_value(length);
-        quality_model.add_value(length, quality, &mut rng);
+    match extension.to_lowercase().as_str() {
+        "bam" => {
+            let reader = BamReader::from_path(input_path)?;
+            for record in reader {
+                let record = record?;
+                let length = record.sequence().len();
+                // Convert raw Phred scores (0-93) to Phred+33 ASCII encoding
+                let quality: Vec<u8> = record
+                    .quality_scores()
+                    .as_ref()
+                    .iter()
+                    .map(|&q| q.saturating_add(33))
+                    .collect();
+                length_model.add_value(length);
+                quality_model.add_value(length, quality, &mut rng);
+            }
+        }
+        "fastq" | "fq" | "gz" | "bgz" | "bgzf" => {
+            let reader = FastqReader::from_path(input_path)?;
+            for record in reader {
+                let record = record?;
+                let length = record.sequence().len();
+                let quality = record.quality_scores().to_vec();
+                length_model.add_value(length);
+                quality_model.add_value(length, quality, &mut rng);
+            }
+        }
+        _ => {
+            anyhow::bail!(
+                "Unsupported input file format. Expected .fastq, .fq, .bam, or compressed variants (.gz, .bgz, .bgzf)"
+            );
+        }
     }
 
     Ok((length_model, quality_model))
