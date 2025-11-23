@@ -13,6 +13,10 @@
 .DS_Store
 Thumbs.db
 
+# AI Agents
+.claude/
+.code/
+
 # Test data
 *.fastq
 *.fasta

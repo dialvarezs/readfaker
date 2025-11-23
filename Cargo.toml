@@ -5,10 +5,10 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.100"
-bgzip = { version = "0.3.1", features = ["zlib-ng"] }
-clap = { version = "4.5.50", features = ["derive"] }
+clap = { version = "4.5.52", features = ["derive"] }
 console = "0.16.1"
-needletail = "0.6.3"
+flate2 = {version = "1.1.5", features = ["zlib-rs"]}
+noodles = { version = "0.102.0", features = ["fasta", "fastq", "bgzf", "bam", "sam"] }
 rand = "0.9.2"
 uuid = { version = "1.18.1", features = ["v4"] }
 

@@ -1,8 +1,8 @@
 use anyhow::Result;
 use clap::Parser;
-use readfaker::cli::{fmt, Cli};
+use readfaker::cli::{Cli, fmt};
 use readfaker::generator::ReadGenerator;
-use readfaker::io::{FastaReader, FastqWriter};
+use readfaker::io::{BamWriter, FastaReader, FastqWriter};
 use readfaker::models::ErrorModel;
 use readfaker::utils::load_models;
 
@@ -11,10 +11,26 @@ fn main() -> Result<()> {
 
     if cli.verbose {
         eprintln!("{}", fmt::header("ReadFaker Configuration"));
-        eprintln!("{}: {}", fmt::param_aligned("Reference", 16), cli.reference.display());
-        eprintln!("{}: {}", fmt::param_aligned("Input", 16), cli.input.display());
-        eprintln!("{}: {}", fmt::param_aligned("Output", 16), cli.output.display());
-        eprintln!("{}: {}", fmt::param_aligned("Number of reads", 16), cli.num_reads);
+        eprintln!(
+            "{}: {}",
+            fmt::param_aligned("Reference", 16),
+            cli.reference.display()
+        );
+        eprintln!(
+            "{}: {}",
+            fmt::param_aligned("Input", 16),
+            cli.input.display()
+        );
+        eprintln!(
+            "{}: {}",
+            fmt::param_aligned("Output", 16),
+            cli.output.display()
+        );
+        eprintln!(
+            "{}: {}",
+            fmt::param_aligned("Number of reads", 16),
+            cli.num_reads
+        );
         if let Some(seed) = cli.seed {
             eprintln!("{}: {}", fmt::param_aligned("Random seed", 16), seed);
         }
@@ -26,7 +42,44 @@ fn main() -> Result<()> {
     }
     let (length_model, quality_model) = load_models(&cli.input, cli.seed)?;
 
-    let error_model = ErrorModel::new(None, None, None)?;
+    let error_model = ErrorModel::new(
+        cli.error_sub,
+        cli.error_ins,
+        cli.error_del,
+        cli.error_ins_ext,
+        cli.error_del_ext,
+    )?;
+
+    if cli.verbose {
+        eprintln!("Error Model Configuration:");
+        eprintln!(
+            "{}: {:.2}",
+            fmt::param_aligned("Substitution rate", 20),
+            error_model.substitution_rate
+        );
+        eprintln!(
+            "{}: {:.2}",
+            fmt::param_aligned("Insertion rate", 20),
+            error_model.insertion_rate
+        );
+        eprintln!(
+            "{}: {:.2}",
+            fmt::param_aligned("Deletion rate", 20),
+            error_model.deletion_rate
+        );
+        eprintln!(
+            "{}: {:.2}",
+            fmt::param_aligned("Ins. extension rate", 20),
+            error_model.insertion_extension_rate
+        );
+        eprintln!(
+            "{}: {:.2}",
+            fmt::param_aligned("Del. extension rate", 20),
+            error_model.deletion_extension_rate
+        );
+        eprintln!();
+    }
+
     let mut generator = ReadGenerator::new(
         FastaReader::read(&cli.reference)?,
         length_model,
@@ -34,19 +87,48 @@ fn main() -> Result<()> {
         error_model,
         cli.seed,
     )?;
-    let mut writer = FastqWriter::new(&cli.output)?;
+
+    // Detect output format based on extension
+    let output_ext = cli
+        .output
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_lowercase();
 
     if cli.verbose {
-        eprintln!("{}", fmt::progress(format!("Generating {} reads...", cli.num_reads)));
+        eprintln!(
+            "{}",
+            fmt::progress(format!("Generating {} reads...", cli.num_reads))
+        );
     }
 
-    for _ in 0..cli.num_reads {
-        let read = generator.generate_read()?;
-        writer.write_record(&read)?;
+    match output_ext.to_lowercase().as_str() {
+        "bam" => {
+            let mut writer = BamWriter::new(&cli.output, cli.compression_threads)?;
+            for _ in 0..cli.num_reads {
+                let read = generator.generate_read()?;
+                let name = std::str::from_utf8(read.name()).expect("UUID should be valid UTF-8");
+                writer.write_record(name, read.sequence(), read.quality_scores())?;
+            }
+            writer.finish()?;
+        }
+        _ => {
+            // Default to FASTQ for all other extensions
+            let mut writer = FastqWriter::new(&cli.output, cli.compression_threads)?;
+            for _ in 0..cli.num_reads {
+                let read = generator.generate_read()?;
+                writer.write_record(&read)?;
+            }
+            writer.finish()?;
+        }
     }
 
     if cli.verbose {
-        eprintln!("{}", fmt::success(format!("Output written to {}", cli.output.display())));
+        eprintln!(
+            "{}",
+            fmt::success(format!("Output written to {}", cli.output.display()))
+        );
     }
 
     Ok(())

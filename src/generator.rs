@@ -1,9 +1,9 @@
-use crate::io::FastqRecord;
 use crate::io::fasta::FastaRecord;
 use crate::models::error::AlterationType;
 use crate::models::{ErrorModel, LengthModel, QualityModel};
 use crate::utils::QUALITY_MAPPING;
 use anyhow::{Result, anyhow, bail};
+use noodles::fastq;
 use rand::prelude::IndexedRandom;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -33,7 +33,7 @@ const PHRED_OFFSET: u8 = 33;
 /// let mut quality_model = QualityModel::new(None, None, None);
 /// let mut rng = StdRng::seed_from_u64(42);
 /// quality_model.add_value(100, vec![b':'; 100], &mut rng);
-/// let error_model = ErrorModel::new(None, None, None).unwrap();
+/// let error_model = ErrorModel::new(None, None, None, None, None).unwrap();
 ///
 /// let mut generator = ReadGenerator::new(
 ///     references,
@@ -98,11 +98,11 @@ impl ReadGenerator {
     /// Automatically retries if the sampled length exceeds the reference sequence length.
     ///
     /// # Returns
-    /// A `FastqRecord` with simulated sequencing errors based on quality scores
+    /// A `fastq::Record` with simulated sequencing errors based on quality scores
     ///
     /// # Errors
     /// Returns an error if the length or quality models are empty
-    pub fn generate_read(&mut self) -> Result<FastqRecord> {
+    pub fn generate_read(&mut self) -> Result<fastq::Record> {
         loop {
             let length = self
                 .length_model
@@ -126,11 +126,12 @@ impl ReadGenerator {
 
             let (final_sequence, final_qualities) = self.apply_errors(sequence, qualities);
 
-            return Ok(FastqRecord {
-                id: format!("{}", Uuid::new_v4()),
-                sequence: final_sequence,
-                quality: final_qualities,
-            });
+            let id = format!("{}", Uuid::new_v4());
+            return Ok(fastq::Record::new(
+                fastq::record::Definition::new(id, ""),
+                final_sequence,
+                final_qualities,
+            ));
         }
     }
 
@@ -234,7 +235,7 @@ mod tests {
 
         let mut length_model = LengthModel::new();
         let mut quality_model = QualityModel::new(None, None, None);
-        let error_model = ErrorModel::new(None, None, None).unwrap();
+        let error_model = ErrorModel::new(None, None, None, None, None).unwrap();
         let mut rng = StdRng::seed_from_u64(42);
 
         length_model.add_value(10);
@@ -264,13 +265,14 @@ mod tests {
         // Generate multiple reads to verify the generator can be reused
         for _ in 0..5 {
             let read = generator.generate_read().unwrap();
-            assert_eq!(read.len(), 10);
-            assert!(read.quality.iter().all(|&q| q >= PHRED_OFFSET));
+            assert_eq!(read.sequence().len(), 10);
+            assert!(read.quality_scores().iter().all(|&q| q >= PHRED_OFFSET));
             // Verify the ID is a valid UUID
+            let name_str = std::str::from_utf8(read.name()).unwrap();
             assert!(
-                Uuid::parse_str(&read.id).is_ok(),
+                Uuid::parse_str(name_str).is_ok(),
                 "Expected valid UUID, got: {}",
-                read.id
+                name_str
             );
         }
     }
