@@ -43,8 +43,10 @@ pub fn load_models(
 
     for record in reader {
         let record = record?;
-        length_model.add_value(record.len());
-        quality_model.add_value(record.len(), record.quality, &mut rng);
+        let length = record.sequence().len();
+        let quality = record.quality_scores().to_vec();
+        length_model.add_value(length);
+        quality_model.add_value(length, quality, &mut rng);
     }
 
     Ok((length_model, quality_model))

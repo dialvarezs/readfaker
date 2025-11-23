@@ -8,50 +8,6 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
-/// Represents a FASTQ record with sequence and quality scores.
-#[derive(Debug, Clone)]
-pub struct FastqRecord {
-    pub id: String,
-    pub sequence: Vec<u8>,
-    pub quality: Vec<u8>,
-}
-
-impl FastqRecord {
-    /// Creates a new FASTQ record with validation.
-    ///
-    /// # Arguments
-    /// * `id` - Read identifier
-    /// * `sequence` - Nucleotide sequence
-    /// * `quality` - Quality scores (must match sequence length)
-    ///
-    /// # Returns
-    /// Validated FASTQ record or error if lengths don't match
-    pub fn new(id: String, sequence: Vec<u8>, quality: Vec<u8>) -> Result<Self> {
-        if sequence.len() != quality.len() {
-            anyhow::bail!(
-                "Sequence length ({}) does not match quality length ({})",
-                sequence.len(),
-                quality.len()
-            );
-        }
-        Ok(Self {
-            id,
-            sequence,
-            quality,
-        })
-    }
-
-    /// Returns the length of the sequence.
-    pub fn len(&self) -> usize {
-        self.sequence.len()
-    }
-
-    /// Checks whether the sequence is empty.
-    pub fn is_empty(&self) -> bool {
-        self.sequence.is_empty()
-    }
-}
-
 /// Reader for FASTQ files
 pub struct FastqReader;
 
@@ -68,7 +24,7 @@ impl FastqReader {
     /// let reader = FastqReader::from_path(Path::new("input.fastq"))?;
     /// for record in reader {
     ///     let record = record?;
-    ///     println!("Read: {}, length: {}", record.id, record.len());
+    ///     println!("Read: {}, length: {}", std::str::from_utf8(record.name()).unwrap(), record.sequence().len());
     /// }
     /// # Ok::<(), anyhow::Error>(())
     /// ```
@@ -105,7 +61,7 @@ pub struct FastqReaderIterator {
 }
 
 impl Iterator for FastqReaderIterator {
-    type Item = Result<FastqRecord>;
+    type Item = Result<fastq::Record>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut record = fastq::Record::default();
@@ -117,17 +73,7 @@ impl Iterator for FastqReaderIterator {
 
         match read_result {
             Ok(0) => None,
-            Ok(_) => {
-                let id = record.name().to_string();
-                let sequence = record.sequence().to_vec();
-                let quality = record.quality_scores().to_vec();
-
-                Some(Ok(FastqRecord {
-                    id,
-                    sequence,
-                    quality,
-                }))
-            }
+            Ok(_) => Some(Ok(record)),
             Err(e) => Some(Err(
                 anyhow::Error::new(e).context("Failed to parse FASTQ record")
             )),
@@ -172,16 +118,10 @@ impl FastqWriter {
     }
 
     /// Writes a single FASTQ record.
-    pub fn write_record(&mut self, record: &FastqRecord) -> Result<()> {
-        let noodles_record = fastq::Record::new(
-            fastq::record::Definition::new(record.id.clone(), ""),
-            record.sequence.clone(),
-            record.quality.clone(),
-        );
-
+    pub fn write_record(&mut self, record: &fastq::Record) -> Result<()> {
         match &mut self.writer {
-            FastqWriterInner::Uncompressed(w) => w.write_record(&noodles_record),
-            FastqWriterInner::Compressed(w) => w.write_record(&noodles_record),
+            FastqWriterInner::Uncompressed(w) => w.write_record(record),
+            FastqWriterInner::Compressed(w) => w.write_record(record),
         }
         .context("Failed to write FASTQ record")
     }
@@ -190,7 +130,7 @@ impl FastqWriter {
     ///
     /// # Arguments
     /// * `records` - Slice of FASTQ records to write
-    pub fn write_records(&mut self, records: &[FastqRecord]) -> Result<()> {
+    pub fn write_records(&mut self, records: &[fastq::Record]) -> Result<()> {
         for record in records {
             self.write_record(record)?;
         }
@@ -247,7 +187,8 @@ enum FastqWriterInner {
 ///
 /// # Example
 /// ```no_run
-/// use readfaker::io::fastq::{FastqWriter, FastqRecord};
+/// use readfaker::io::fastq::FastqWriter;
+/// use noodles::fastq;
 /// use std::path::PathBuf;
 ///
 /// // Uncompressed output
@@ -259,11 +200,11 @@ enum FastqWriterInner {
 /// // Compressed output with 4 threads
 /// let mut writer_4t = FastqWriter::new(&PathBuf::from("output.fastq.gz"), Some(4))?;
 ///
-/// let record = FastqRecord::new(
-///     "read1".to_string(),
-///     b"ACGT".to_vec(),
-///     b"IIII".to_vec()
-/// )?;
+/// let record = fastq::Record::new(
+///     fastq::record::Definition::new("read1", ""),
+///     b"ACGT",
+///     b"IIII",
+/// );
 /// writer.write_record(&record)?;
 /// writer.flush()?;  // Explicitly flush to handle errors
 /// # Ok::<(), anyhow::Error>(())
@@ -298,21 +239,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_fastq_record_new() {
-        let record = FastqRecord::new("read1".to_string(), b"ACGT".to_vec(), b"IIII".to_vec());
-        assert!(record.is_ok());
-        assert_eq!(record.unwrap().len(), 4);
-    }
-
-    #[test]
     fn test_fastq_writer() {
         let temp_dir = std::env::temp_dir();
         let temp_file = temp_dir.join("test.fastq");
 
         {
             let mut writer = FastqWriter::new(&temp_file, None).unwrap();
-            let record =
-                FastqRecord::new("read1".to_string(), b"ACGT".to_vec(), b"IIII".to_vec()).unwrap();
+            let record = fastq::Record::new(
+                fastq::record::Definition::new("read1", ""),
+                b"ACGT",
+                b"IIII",
+            );
             writer.write_record(&record).unwrap();
             writer.flush().unwrap();
         }
@@ -331,14 +268,16 @@ mod tests {
 
         {
             let mut writer = FastqWriter::new(&temp_file, None).unwrap();
-            let record1 =
-                FastqRecord::new("read1".to_string(), b"ACGT".to_vec(), b"IIII".to_vec()).unwrap();
-            let record2 = FastqRecord::new(
-                "read2".to_string(),
-                b"TGCATGCA".to_vec(),
-                b"IIIIIIII".to_vec(),
-            )
-            .unwrap();
+            let record1 = fastq::Record::new(
+                fastq::record::Definition::new("read1", ""),
+                b"ACGT",
+                b"IIII",
+            );
+            let record2 = fastq::Record::new(
+                fastq::record::Definition::new("read2", ""),
+                b"TGCATGCA",
+                b"IIIIIIII",
+            );
 
             writer.write_record(&record1).unwrap();
             writer.write_record(&record2).unwrap();
@@ -357,15 +296,15 @@ mod tests {
         );
 
         // Read back and verify content
-        let records: Vec<FastqRecord> = FastqReader::from_path(&temp_file)
+        let records: Vec<fastq::Record> = FastqReader::from_path(&temp_file)
             .unwrap()
             .collect::<Result<Vec<_>>>()
             .unwrap();
 
         assert_eq!(records.len(), 2);
-        assert_eq!(records[0].id, "read1");
-        assert_eq!(records[0].sequence, b"ACGT");
-        assert_eq!(records[1].id, "read2");
+        assert_eq!(records[0].name(), "read1");
+        assert_eq!(records[0].sequence(), b"ACGT");
+        assert_eq!(records[1].name(), "read2");
 
         std::fs::remove_file(temp_file).ok();
     }

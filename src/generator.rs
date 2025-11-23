@@ -1,5 +1,5 @@
-use crate::io::FastqRecord;
 use crate::io::fasta::FastaRecord;
+use noodles::fastq;
 use crate::models::error::AlterationType;
 use crate::models::{ErrorModel, LengthModel, QualityModel};
 use crate::utils::QUALITY_MAPPING;
@@ -98,11 +98,11 @@ impl ReadGenerator {
     /// Automatically retries if the sampled length exceeds the reference sequence length.
     ///
     /// # Returns
-    /// A `FastqRecord` with simulated sequencing errors based on quality scores
+    /// A `fastq::Record` with simulated sequencing errors based on quality scores
     ///
     /// # Errors
     /// Returns an error if the length or quality models are empty
-    pub fn generate_read(&mut self) -> Result<FastqRecord> {
+    pub fn generate_read(&mut self) -> Result<fastq::Record> {
         loop {
             let length = self
                 .length_model
@@ -126,11 +126,12 @@ impl ReadGenerator {
 
             let (final_sequence, final_qualities) = self.apply_errors(sequence, qualities);
 
-            return Ok(FastqRecord {
-                id: format!("{}", Uuid::new_v4()),
-                sequence: final_sequence,
-                quality: final_qualities,
-            });
+            let id = format!("{}", Uuid::new_v4());
+            return Ok(fastq::Record::new(
+                fastq::record::Definition::new(id, ""),
+                final_sequence,
+                final_qualities,
+            ));
         }
     }
 
@@ -264,13 +265,14 @@ mod tests {
         // Generate multiple reads to verify the generator can be reused
         for _ in 0..5 {
             let read = generator.generate_read().unwrap();
-            assert_eq!(read.len(), 10);
-            assert!(read.quality.iter().all(|&q| q >= PHRED_OFFSET));
+            assert_eq!(read.sequence().len(), 10);
+            assert!(read.quality_scores().iter().all(|&q| q >= PHRED_OFFSET));
             // Verify the ID is a valid UUID
+            let name_str = std::str::from_utf8(read.name()).unwrap();
             assert!(
-                Uuid::parse_str(&read.id).is_ok(),
+                Uuid::parse_str(name_str).is_ok(),
                 "Expected valid UUID, got: {}",
-                read.id
+                name_str
             );
         }
     }
