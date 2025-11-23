@@ -1,9 +1,9 @@
 use crate::io::fasta::FastaRecord;
-use noodles::fastq;
 use crate::models::error::AlterationType;
 use crate::models::{ErrorModel, LengthModel, QualityModel};
 use crate::utils::QUALITY_MAPPING;
 use anyhow::{Result, anyhow, bail};
+use noodles::fastq;
 use rand::prelude::IndexedRandom;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};

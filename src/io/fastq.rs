@@ -5,11 +5,13 @@ use flate2::read::MultiGzDecoder;
 use noodles::bgzf;
 use noodles::fastq;
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Write};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 /// Reader for FASTQ files
-pub struct FastqReader;
+pub struct FastqReader {
+    reader: fastq::io::Reader<Box<dyn BufRead>>,
+}
 
 impl FastqReader {
     /// Open a FASTQ file and return a streaming iterator over records
@@ -28,7 +30,7 @@ impl FastqReader {
     /// }
     /// # Ok::<(), anyhow::Error>(())
     /// ```
-    pub fn from_path(path: &Path) -> Result<FastqReaderIterator> {
+    pub fn from_path(path: &Path) -> Result<Self> {
         let file = File::open(path)
             .with_context(|| format!("Failed to open FASTQ file: {}", path.display()))?;
 
@@ -36,42 +38,26 @@ impl FastqReader {
         let mut buffered = BufReader::new(file);
         let is_compressed = is_gzip_compressed(&mut buffered)?;
 
-        let reader = if is_compressed {
+        let reader: Box<dyn BufRead> = if is_compressed {
             // Use MultiGzDecoder which handles both regular gzip and BGZF
-            FastqReaderInner::Compressed(fastq::io::Reader::new(BufReader::new(
-                MultiGzDecoder::new(buffered),
-            )))
+            Box::new(BufReader::new(MultiGzDecoder::new(buffered)))
         } else {
-            FastqReaderInner::Uncompressed(fastq::io::Reader::new(buffered))
+            Box::new(buffered)
         };
 
-        Ok(FastqReaderIterator { reader })
+        Ok(Self {
+            reader: fastq::io::Reader::new(reader),
+        })
     }
 }
 
-/// Internal reader implementation supporting both compressed and uncompressed files
-enum FastqReaderInner<R: std::io::Read> {
-    Uncompressed(fastq::io::Reader<BufReader<R>>),
-    Compressed(fastq::io::Reader<BufReader<MultiGzDecoder<BufReader<R>>>>),
-}
-
-/// Iterator over FASTQ records
-pub struct FastqReaderIterator {
-    reader: FastqReaderInner<File>,
-}
-
-impl Iterator for FastqReaderIterator {
+impl Iterator for FastqReader {
     type Item = Result<fastq::Record>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut record = fastq::Record::default();
 
-        let read_result = match &mut self.reader {
-            FastqReaderInner::Uncompressed(reader) => reader.read_record(&mut record),
-            FastqReaderInner::Compressed(reader) => reader.read_record(&mut record),
-        };
-
-        match read_result {
+        match self.reader.read_record(&mut record) {
             Ok(0) => None,
             Ok(_) => Some(Ok(record)),
             Err(e) => Some(Err(
@@ -81,80 +67,29 @@ impl Iterator for FastqReaderIterator {
     }
 }
 
-impl FastqWriter {
-    /// Creates a new FASTQ writer for the specified file path.
-    ///
-    /// The output format is automatically determined from the file extension:
-    /// - Files ending in `.gz`, `.bgz`, or `.bgzf` will be BGZF-compressed
-    /// - All other files will be uncompressed
-    ///
-    /// # Arguments
-    /// * `path` - Path to the output FASTQ file
-    /// * `compression_threads` - Optional number of compression threads (None = auto-detect)
-    pub fn new(path: &PathBuf, compression_threads: Option<usize>) -> Result<Self> {
-        let file = File::create(path)
-            .with_context(|| format!("Failed to create FASTQ file: {}", path.display()))?;
+/// Internal writer implementation supporting both uncompressed and BGZF-compressed output.
+enum FastqWriterInner {
+    Uncompressed(fastq::io::Writer<BufWriter<File>>),
+    Compressed(fastq::io::Writer<bgzf::io::MultithreadedWriter<File>>),
+}
 
-        let writer = if should_compress(path) {
-            // Use specified threads or auto-detect CPU cores
-            let worker_count = compression_threads.unwrap_or_else(|| {
-                std::thread::available_parallelism()
-                    .map(|n| n.get())
-                    .unwrap_or(4) // Fallback to 4 threads
-            });
-
-            let bgzf_writer = if let Some(count) = std::num::NonZero::new(worker_count) {
-                bgzf::io::MultithreadedWriter::with_worker_count(count, file)
-            } else {
-                bgzf::io::MultithreadedWriter::new(file)
-            };
-
-            FastqWriterInner::Compressed(fastq::io::Writer::new(bgzf_writer))
-        } else {
-            FastqWriterInner::Uncompressed(fastq::io::Writer::new(BufWriter::new(file)))
-        };
-
-        Ok(Self { writer })
-    }
-
-    /// Writes a single FASTQ record.
-    pub fn write_record(&mut self, record: &fastq::Record) -> Result<()> {
-        match &mut self.writer {
+impl FastqWriterInner {
+    fn write_record(&mut self, record: &fastq::Record) -> std::io::Result<()> {
+        match self {
             FastqWriterInner::Uncompressed(w) => w.write_record(record),
             FastqWriterInner::Compressed(w) => w.write_record(record),
         }
-        .context("Failed to write FASTQ record")
     }
 
-    /// Writes multiple FASTQ records.
-    ///
-    /// # Arguments
-    /// * `records` - Slice of FASTQ records to write
-    pub fn write_records(&mut self, records: &[fastq::Record]) -> Result<()> {
-        for record in records {
-            self.write_record(record)?;
-        }
-        Ok(())
-    }
-
-    /// Flushes the internal buffer to ensure all data is written.
-    ///
-    /// It's recommended to call this explicitly before the writer is dropped
-    /// to ensure flush errors are properly handled.
-    pub fn flush(&mut self) -> Result<()> {
-        match &mut self.writer {
+    fn flush_writer(&mut self) -> std::io::Result<()> {
+        match self {
             FastqWriterInner::Uncompressed(w) => w.get_mut().flush(),
             FastqWriterInner::Compressed(w) => w.get_mut().flush(),
         }
-        .context("Failed to flush FASTQ writer")
     }
 
-    /// Finishes the writer, properly shutting down compression threads if applicable.
-    ///
-    /// For compressed writers, this shuts down the thread pool and writes the final BGZF EOF block.
-    /// This should be called explicitly before the writer is dropped to ensure proper finalization.
-    pub fn finish(self) -> Result<()> {
-        match self.writer {
+    fn finish(self) -> Result<()> {
+        match self {
             FastqWriterInner::Uncompressed(mut w) => w
                 .get_mut()
                 .flush()
@@ -168,12 +103,6 @@ impl FastqWriter {
             }
         }
     }
-}
-
-/// Internal writer implementation supporting both uncompressed and BGZF-compressed output.
-enum FastqWriterInner {
-    Uncompressed(fastq::io::Writer<BufWriter<File>>),
-    Compressed(fastq::io::Writer<bgzf::io::MultithreadedWriter<File>>),
 }
 
 /// Writer for FASTQ files supporting both uncompressed and BGZF-compressed output.
@@ -213,10 +142,80 @@ pub struct FastqWriter {
     writer: FastqWriterInner,
 }
 
+impl FastqWriter {
+    /// Creates a new FASTQ writer for the specified file path.
+    ///
+    /// The output format is automatically determined from the file extension:
+    /// - Files ending in `.gz`, `.bgz`, or `.bgzf` will be BGZF-compressed
+    /// - All other files will be uncompressed
+    ///
+    /// # Arguments
+    /// * `path` - Path to the output FASTQ file
+    /// * `compression_threads` - Optional number of compression threads (None = auto-detect)
+    pub fn new(path: &PathBuf, compression_threads: Option<usize>) -> Result<Self> {
+        let file = File::create(path)
+            .with_context(|| format!("Failed to create FASTQ file: {}", path.display()))?;
+
+        let writer = if should_compress(path) {
+            // Use specified threads or auto-detect CPU cores
+            let worker_count = compression_threads.unwrap_or_else(|| {
+                std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(4) // Fallback to 4 threads
+            });
+
+            let bgzf_writer = bgzf::io::MultithreadedWriter::with_worker_count(
+                std::num::NonZero::new(worker_count).unwrap(),
+                file,
+            );
+
+            FastqWriterInner::Compressed(fastq::io::Writer::new(bgzf_writer))
+        } else {
+            FastqWriterInner::Uncompressed(fastq::io::Writer::new(BufWriter::new(file)))
+        };
+
+        Ok(Self { writer })
+    }
+
+    /// Writes a single FASTQ record.
+    pub fn write_record(&mut self, record: &fastq::Record) -> Result<()> {
+        self.writer
+            .write_record(record)
+            .context("Failed to write FASTQ record")
+    }
+
+    /// Writes multiple FASTQ records.
+    ///
+    /// # Arguments
+    /// * `records` - Slice of FASTQ records to write
+    pub fn write_records(&mut self, records: &[fastq::Record]) -> Result<()> {
+        for record in records {
+            self.write_record(record)?;
+        }
+        Ok(())
+    }
+
+    /// Flushes the internal buffer to ensure all data is written.
+    ///
+    /// It's recommended to call this explicitly before the writer is dropped
+    /// to ensure flush errors are properly handled.
+    pub fn flush(&mut self) -> Result<()> {
+        self.writer
+            .flush_writer()
+            .context("Failed to flush FASTQ writer")
+    }
+
+    /// Finishes the writer, properly shutting down compression threads if applicable.
+    ///
+    /// For compressed writers, this shuts down the thread pool and writes the final BGZF EOF block.
+    /// This should be called explicitly before the writer is dropped to ensure proper finalization.
+    pub fn finish(self) -> Result<()> {
+        self.writer.finish()
+    }
+}
+
 /// Helper function to check if a file is gzip-compressed
 fn is_gzip_compressed<R: std::io::Read>(reader: &mut BufReader<R>) -> Result<bool> {
-    use std::io::BufRead;
-
     let buffer = reader.fill_buf().context("Failed to read file header")?;
 
     // Check for gzip magic bytes (0x1f 0x8b)

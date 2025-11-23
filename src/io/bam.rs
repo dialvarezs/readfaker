@@ -33,9 +33,7 @@ impl BamReader {
             .build_from_path(path)
             .with_context(|| format!("Failed to open BAM file: {}", path.display()))?;
 
-        let header = reader
-            .read_header()
-            .context("Failed to read BAM header")?;
+        let header = reader.read_header().context("Failed to read BAM header")?;
 
         Ok(BamReaderIterator { reader, header })
     }
@@ -99,7 +97,12 @@ impl BamWriter {
     /// * `name` - Read name/identifier
     /// * `sequence` - Nucleotide sequence
     /// * `quality_ascii` - Quality scores in Phred+33 ASCII encoding
-    pub fn write_record(&mut self, name: &str, sequence: &[u8], quality_ascii: &[u8]) -> Result<()> {
+    pub fn write_record(
+        &mut self,
+        name: &str,
+        sequence: &[u8],
+        quality_ascii: &[u8],
+    ) -> Result<()> {
         use noodles::sam::alignment::io::Write as AlignmentWrite;
 
         // Convert Phred+33 ASCII to raw Phred scores (0-93) for BAM format
@@ -179,8 +182,11 @@ mod tests {
         // Verify quality scores are stored as raw Phred (not ASCII)
         // 'I' (ASCII 73) should be stored as raw Phred 40
         let qualities_read1: Vec<u8> = records[0].quality_scores().as_ref().to_vec();
-        assert_eq!(qualities_read1, vec![40, 40, 40, 40],
-            "BAM should store raw Phred scores (40), not ASCII (73)");
+        assert_eq!(
+            qualities_read1,
+            vec![40, 40, 40, 40],
+            "BAM should store raw Phred scores (40), not ASCII (73)"
+        );
 
         assert_eq!(
             records[1].name().map(|n| n.to_string()),
@@ -189,8 +195,11 @@ mod tests {
 
         // 'J' (ASCII 74) should be stored as raw Phred 41
         let qualities_read2: Vec<u8> = records[1].quality_scores().as_ref().to_vec();
-        assert_eq!(qualities_read2, vec![41, 41, 41, 41],
-            "BAM should store raw Phred scores (41), not ASCII (74)");
+        assert_eq!(
+            qualities_read2,
+            vec![41, 41, 41, 41],
+            "BAM should store raw Phred scores (41), not ASCII (74)"
+        );
 
         std::fs::remove_file(temp_file).ok();
     }
@@ -217,10 +226,8 @@ mod tests {
 
         // BGZF EOF marker is a specific 28-byte block
         let expected_eof = [
-            0x1f, 0x8b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0xff, 0x06, 0x00, 0x42, 0x43, 0x02, 0x00,
-            0x1b, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
+            0x1f, 0x8b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x06, 0x00, 0x42, 0x43,
+            0x02, 0x00, 0x1b, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
 
         assert_eq!(
