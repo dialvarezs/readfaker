@@ -6,7 +6,7 @@ use crate::utils::QUALITY_MAPPING;
 use anyhow::{Result, anyhow, bail};
 use rand::prelude::IndexedRandom;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use uuid::Uuid;
 
 const PHRED_OFFSET: u8 = 33;

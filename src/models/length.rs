@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::{Rng, RngExt};
 use std::collections::BTreeMap;
 
 /// Empirical model of read lengths built from observed sequencing data.

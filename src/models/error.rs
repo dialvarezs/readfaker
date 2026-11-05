@@ -1,5 +1,5 @@
 use anyhow::{Result, bail};
-use rand::Rng;
+use rand::{Rng, RngExt};
 
 const SUBSTITUTION_DEFAULT_RATE: f64 = 0.7;
 const INSERTION_DEFAULT_RATE: f64 = 0.1;

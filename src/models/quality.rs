@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::{Rng, RngExt};
 use rand::seq::IndexedRandom;
 
 /// Default maximum read length before grouping into a catch-all bucket (20kb).
