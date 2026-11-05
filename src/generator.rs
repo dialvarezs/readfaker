@@ -4,10 +4,14 @@ use crate::models::{ErrorModel, LengthModel, QualityModel};
 use crate::utils::{PHRED_OFFSET, QUALITY_MAPPING, make_rng};
 use anyhow::{Result, anyhow, bail};
 use noodles::fastq;
-use rand::prelude::IndexedRandom;
-use rand::rngs::StdRng;
 use rand::RngExt;
+use rand::distr::Distribution;
+use rand::distr::weighted::WeightedIndex;
+use rand::rngs::StdRng;
 use uuid::Uuid;
+
+/// Maximum attempts to find a (length, reference, quality) combination before giving up.
+const MAX_ATTEMPTS: usize = 1000;
 
 /// Generator for synthetic sequencing reads with realistic error profiles.
 ///
@@ -44,6 +48,8 @@ use uuid::Uuid;
 /// ```
 pub struct ReadGenerator {
     reference_sequences: Vec<FastaRecord>,
+    /// Picks references proportionally to their length, so coverage is uniform across contigs.
+    reference_weights: WeightedIndex<usize>,
     length_model: LengthModel,
     quality_model: QualityModel,
     error_model: ErrorModel,
@@ -75,10 +81,14 @@ impl ReadGenerator {
             bail!("Reference sequences cannot be empty");
         }
 
+        let reference_weights =
+            WeightedIndex::new(reference_sequences.iter().map(|r| r.sequence.len()))
+                .map_err(|e| anyhow!("Invalid reference sequences: {}", e))?;
         let rng = make_rng(seed);
 
         Ok(Self {
             reference_sequences,
+            reference_weights,
             length_model,
             quality_model,
             error_model,
@@ -96,14 +106,16 @@ impl ReadGenerator {
     /// A `fastq::Record` with simulated sequencing errors based on quality scores
     ///
     /// # Errors
-    /// Returns an error if the length or quality models are empty
+    /// Returns an error if the length model is empty, or if no valid read can be built
+    /// after `MAX_ATTEMPTS` tries (e.g. references shorter than all sampled lengths)
     pub fn generate_read(&mut self) -> Result<fastq::Record> {
-        loop {
+        for _ in 0..MAX_ATTEMPTS {
             let length = self
                 .length_model
                 .sample(&mut self.rng)
                 .ok_or_else(|| anyhow!("Length model is empty"))?;
-            let reference_sequence = self.reference_sequences.choose(&mut self.rng).unwrap();
+            let reference_sequence =
+                &self.reference_sequences[self.reference_weights.sample(&mut self.rng)];
 
             // Skip if sampled length is longer than reference sequence
             if length > reference_sequence.sequence.len() {
@@ -128,6 +140,11 @@ impl ReadGenerator {
                 final_qualities,
             ));
         }
+
+        bail!(
+            "Failed to generate a read after {} attempts: sampled read lengths may exceed all reference sequences",
+            MAX_ATTEMPTS
+        )
     }
 
     /// Applies sequencing errors to a sequence based on quality scores and error model.
@@ -285,5 +302,38 @@ mod tests {
         // Test without exclusion (insertion)
         let result = generator.get_random_nucleotide(None);
         assert!(result == b'A' || result == b'C' || result == b'G' || result == b'T');
+    }
+
+    #[test]
+    fn test_generate_read_fails_when_reference_too_short() {
+        let mut generator = create_test_generator(Some(vec![FastaRecord {
+            id: "short".to_string(),
+            sequence: b"ACGT".to_vec(),
+        }]))
+        .unwrap();
+        assert!(generator.generate_read().is_err());
+    }
+
+    #[test]
+    fn test_reference_choice_weighted_by_length() {
+        let long = FastaRecord {
+            id: "long".to_string(),
+            sequence: vec![b'A'; 990],
+        };
+        let short = FastaRecord {
+            id: "short".to_string(),
+            sequence: vec![b'C'; 10],
+        };
+        let mut generator = create_test_generator(Some(vec![long, short])).unwrap();
+
+        let from_short = (0..1000)
+            .filter(|_| generator.generate_read().unwrap().sequence()[0] == b'C')
+            .count();
+        // Expected ~1% (10/1000 bp); uniform choice would give ~50%
+        assert!(
+            from_short < 50,
+            "got {} reads from short contig",
+            from_short
+        );
     }
 }
