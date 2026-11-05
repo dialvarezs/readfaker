@@ -1,11 +1,10 @@
 //! FASTQ file reading and writing.
 
 use anyhow::{Context, Result};
-use flate2::read::MultiGzDecoder;
 use noodles::bgzf;
 use noodles::fastq;
 use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::io::{BufRead, BufWriter, Write};
 use std::path::Path;
 
 /// Reader for FASTQ files
@@ -31,22 +30,8 @@ impl FastqReader {
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn from_path(path: &Path) -> Result<Self> {
-        let file = File::open(path)
-            .with_context(|| format!("Failed to open FASTQ file: {}", path.display()))?;
-
-        // Check if file is gzip-compressed by reading magic bytes
-        let mut buffered = BufReader::new(file);
-        let is_compressed = is_gzip_compressed(&mut buffered)?;
-
-        let reader: Box<dyn BufRead> = if is_compressed {
-            // Use MultiGzDecoder which handles both regular gzip and BGZF
-            Box::new(BufReader::new(MultiGzDecoder::new(buffered)))
-        } else {
-            Box::new(buffered)
-        };
-
         Ok(Self {
-            reader: fastq::io::Reader::new(reader),
+            reader: fastq::io::Reader::new(super::open_maybe_gz(path)?),
         })
     }
 }
@@ -192,14 +177,6 @@ impl FastqWriter {
     pub fn finish(self) -> Result<()> {
         self.writer.finish()
     }
-}
-
-/// Helper function to check if a file is gzip-compressed
-fn is_gzip_compressed<R: std::io::Read>(reader: &mut BufReader<R>) -> Result<bool> {
-    let buffer = reader.fill_buf().context("Failed to read file header")?;
-
-    // Check for gzip magic bytes (0x1f 0x8b)
-    Ok(buffer.len() >= 2 && buffer[0] == 0x1f && buffer[1] == 0x8b)
 }
 
 /// Helper function to check if a file should be compressed based on its extension

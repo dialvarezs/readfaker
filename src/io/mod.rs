@@ -6,9 +6,13 @@ pub mod bam;
 pub mod fasta;
 pub mod fastq;
 
+use anyhow::{Context, Result};
+use flate2::read::MultiGzDecoder;
 use noodles::bgzf;
 use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::num::NonZero;
+use std::path::Path;
 
 // Re-export main types
 pub use bam::{BamReader, BamWriter};
@@ -21,4 +25,19 @@ fn bgzf_writer(file: File, compression_threads: usize) -> bgzf::io::Multithreade
         .or_else(|| std::thread::available_parallelism().ok())
         .unwrap_or(NonZero::new(4).unwrap());
     bgzf::io::MultithreadedWriter::with_worker_count(worker_count, file)
+}
+
+/// Opens a file for buffered reading, transparently decompressing gzip/BGZF (detected by magic bytes).
+fn open_maybe_gz(path: &Path) -> Result<Box<dyn BufRead>> {
+    let file =
+        File::open(path).with_context(|| format!("Failed to open file: {}", path.display()))?;
+    let mut buffered = BufReader::new(file);
+    let header = buffered.fill_buf().context("Failed to read file header")?;
+
+    // MultiGzDecoder handles both regular gzip and BGZF
+    Ok(if header.starts_with(&[0x1f, 0x8b]) {
+        Box::new(BufReader::new(MultiGzDecoder::new(buffered)))
+    } else {
+        Box::new(buffered)
+    })
 }
