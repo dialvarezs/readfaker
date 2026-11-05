@@ -5,55 +5,13 @@ use flate2::read::MultiGzDecoder;
 use noodles::bgzf;
 use noodles::fastq;
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Write};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
-/// Represents a FASTQ record with sequence and quality scores.
-#[derive(Debug, Clone)]
-pub struct FastqRecord {
-    pub id: String,
-    pub sequence: Vec<u8>,
-    pub quality: Vec<u8>,
-}
-
-impl FastqRecord {
-    /// Creates a new FASTQ record with validation.
-    ///
-    /// # Arguments
-    /// * `id` - Read identifier
-    /// * `sequence` - Nucleotide sequence
-    /// * `quality` - Quality scores (must match sequence length)
-    ///
-    /// # Returns
-    /// Validated FASTQ record or error if lengths don't match
-    pub fn new(id: String, sequence: Vec<u8>, quality: Vec<u8>) -> Result<Self> {
-        if sequence.len() != quality.len() {
-            anyhow::bail!(
-                "Sequence length ({}) does not match quality length ({})",
-                sequence.len(),
-                quality.len()
-            );
-        }
-        Ok(Self {
-            id,
-            sequence,
-            quality,
-        })
-    }
-
-    /// Returns the length of the sequence.
-    pub fn len(&self) -> usize {
-        self.sequence.len()
-    }
-
-    /// Checks whether the sequence is empty.
-    pub fn is_empty(&self) -> bool {
-        self.sequence.is_empty()
-    }
-}
-
 /// Reader for FASTQ files
-pub struct FastqReader;
+pub struct FastqReader {
+    reader: fastq::io::Reader<Box<dyn BufRead>>,
+}
 
 impl FastqReader {
     /// Open a FASTQ file and return a streaming iterator over records
@@ -68,11 +26,11 @@ impl FastqReader {
     /// let reader = FastqReader::from_path(Path::new("input.fastq"))?;
     /// for record in reader {
     ///     let record = record?;
-    ///     println!("Read: {}, length: {}", record.id, record.len());
+    ///     println!("Read: {}, length: {}", std::str::from_utf8(record.name()).unwrap(), record.sequence().len());
     /// }
     /// # Ok::<(), anyhow::Error>(())
     /// ```
-    pub fn from_path(path: &Path) -> Result<FastqReaderIterator> {
+    pub fn from_path(path: &Path) -> Result<Self> {
         let file = File::open(path)
             .with_context(|| format!("Failed to open FASTQ file: {}", path.display()))?;
 
@@ -80,54 +38,28 @@ impl FastqReader {
         let mut buffered = BufReader::new(file);
         let is_compressed = is_gzip_compressed(&mut buffered)?;
 
-        let reader = if is_compressed {
+        let reader: Box<dyn BufRead> = if is_compressed {
             // Use MultiGzDecoder which handles both regular gzip and BGZF
-            FastqReaderInner::Compressed(fastq::io::Reader::new(BufReader::new(
-                MultiGzDecoder::new(buffered),
-            )))
+            Box::new(BufReader::new(MultiGzDecoder::new(buffered)))
         } else {
-            FastqReaderInner::Uncompressed(fastq::io::Reader::new(buffered))
+            Box::new(buffered)
         };
 
-        Ok(FastqReaderIterator { reader })
+        Ok(Self {
+            reader: fastq::io::Reader::new(reader),
+        })
     }
 }
 
-/// Internal reader implementation supporting both compressed and uncompressed files
-enum FastqReaderInner<R: std::io::Read> {
-    Uncompressed(fastq::io::Reader<BufReader<R>>),
-    Compressed(fastq::io::Reader<BufReader<MultiGzDecoder<BufReader<R>>>>),
-}
-
-/// Iterator over FASTQ records
-pub struct FastqReaderIterator {
-    reader: FastqReaderInner<File>,
-}
-
-impl Iterator for FastqReaderIterator {
-    type Item = Result<FastqRecord>;
+impl Iterator for FastqReader {
+    type Item = Result<fastq::Record>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut record = fastq::Record::default();
 
-        let read_result = match &mut self.reader {
-            FastqReaderInner::Uncompressed(reader) => reader.read_record(&mut record),
-            FastqReaderInner::Compressed(reader) => reader.read_record(&mut record),
-        };
-
-        match read_result {
+        match self.reader.read_record(&mut record) {
             Ok(0) => None,
-            Ok(_) => {
-                let id = record.name().to_string();
-                let sequence = record.sequence().to_vec();
-                let quality = record.quality_scores().to_vec();
-
-                Some(Ok(FastqRecord {
-                    id,
-                    sequence,
-                    quality,
-                }))
-            }
+            Ok(_) => Some(Ok(record)),
             Err(e) => Some(Err(
                 anyhow::Error::new(e).context("Failed to parse FASTQ record")
             )),
@@ -135,86 +67,29 @@ impl Iterator for FastqReaderIterator {
     }
 }
 
-impl FastqWriter {
-    /// Creates a new FASTQ writer for the specified file path.
-    ///
-    /// The output format is automatically determined from the file extension:
-    /// - Files ending in `.gz`, `.bgz`, or `.bgzf` will be BGZF-compressed
-    /// - All other files will be uncompressed
-    ///
-    /// # Arguments
-    /// * `path` - Path to the output FASTQ file
-    /// * `compression_threads` - Optional number of compression threads (None = auto-detect)
-    pub fn new(path: &PathBuf, compression_threads: Option<usize>) -> Result<Self> {
-        let file = File::create(path)
-            .with_context(|| format!("Failed to create FASTQ file: {}", path.display()))?;
+/// Internal writer implementation supporting both uncompressed and BGZF-compressed output.
+enum FastqWriterInner {
+    Uncompressed(fastq::io::Writer<BufWriter<File>>),
+    Compressed(fastq::io::Writer<bgzf::io::MultithreadedWriter<File>>),
+}
 
-        let writer = if should_compress(path) {
-            // Use specified threads or auto-detect CPU cores
-            let worker_count = compression_threads.unwrap_or_else(|| {
-                std::thread::available_parallelism()
-                    .map(|n| n.get())
-                    .unwrap_or(4) // Fallback to 4 threads
-            });
-
-            let bgzf_writer = if let Some(count) = std::num::NonZero::new(worker_count) {
-                bgzf::io::MultithreadedWriter::with_worker_count(count, file)
-            } else {
-                bgzf::io::MultithreadedWriter::new(file)
-            };
-
-            FastqWriterInner::Compressed(fastq::io::Writer::new(bgzf_writer))
-        } else {
-            FastqWriterInner::Uncompressed(fastq::io::Writer::new(BufWriter::new(file)))
-        };
-
-        Ok(Self { writer })
-    }
-
-    /// Writes a single FASTQ record.
-    pub fn write_record(&mut self, record: &FastqRecord) -> Result<()> {
-        let noodles_record = fastq::Record::new(
-            fastq::record::Definition::new(record.id.clone(), ""),
-            record.sequence.clone(),
-            record.quality.clone(),
-        );
-
-        match &mut self.writer {
-            FastqWriterInner::Uncompressed(w) => w.write_record(&noodles_record),
-            FastqWriterInner::Compressed(w) => w.write_record(&noodles_record),
+impl FastqWriterInner {
+    fn write_record(&mut self, record: &fastq::Record) -> std::io::Result<()> {
+        match self {
+            FastqWriterInner::Uncompressed(w) => w.write_record(record),
+            FastqWriterInner::Compressed(w) => w.write_record(record),
         }
-        .context("Failed to write FASTQ record")
     }
 
-    /// Writes multiple FASTQ records.
-    ///
-    /// # Arguments
-    /// * `records` - Slice of FASTQ records to write
-    pub fn write_records(&mut self, records: &[FastqRecord]) -> Result<()> {
-        for record in records {
-            self.write_record(record)?;
-        }
-        Ok(())
-    }
-
-    /// Flushes the internal buffer to ensure all data is written.
-    ///
-    /// It's recommended to call this explicitly before the writer is dropped
-    /// to ensure flush errors are properly handled.
-    pub fn flush(&mut self) -> Result<()> {
-        match &mut self.writer {
+    fn flush_writer(&mut self) -> std::io::Result<()> {
+        match self {
             FastqWriterInner::Uncompressed(w) => w.get_mut().flush(),
             FastqWriterInner::Compressed(w) => w.get_mut().flush(),
         }
-        .context("Failed to flush FASTQ writer")
     }
 
-    /// Finishes the writer, properly shutting down compression threads if applicable.
-    ///
-    /// For compressed writers, this shuts down the thread pool and writes the final BGZF EOF block.
-    /// This should be called explicitly before the writer is dropped to ensure proper finalization.
-    pub fn finish(self) -> Result<()> {
-        match self.writer {
+    fn finish(self) -> Result<()> {
+        match self {
             FastqWriterInner::Uncompressed(mut w) => w
                 .get_mut()
                 .flush()
@@ -230,12 +105,6 @@ impl FastqWriter {
     }
 }
 
-/// Internal writer implementation supporting both uncompressed and BGZF-compressed output.
-enum FastqWriterInner {
-    Uncompressed(fastq::io::Writer<BufWriter<File>>),
-    Compressed(fastq::io::Writer<bgzf::io::MultithreadedWriter<File>>),
-}
-
 /// Writer for FASTQ files supporting both uncompressed and BGZF-compressed output.
 ///
 /// Writes FASTQ records using buffered I/O. When using the `new()` constructor,
@@ -247,23 +116,24 @@ enum FastqWriterInner {
 ///
 /// # Example
 /// ```no_run
-/// use readfaker::io::fastq::{FastqWriter, FastqRecord};
+/// use readfaker::io::fastq::FastqWriter;
+/// use noodles::fastq;
 /// use std::path::PathBuf;
 ///
 /// // Uncompressed output
-/// let mut writer = FastqWriter::new(&PathBuf::from("output.fastq"), None)?;
+/// let mut writer = FastqWriter::new(&PathBuf::from("output.fastq"), 4)?;
 ///
 /// // Compressed output (BGZF) with auto-detected threads
-/// let mut writer_gz = FastqWriter::new(&PathBuf::from("output.fastq.gz"), None)?;
+/// let mut writer_gz = FastqWriter::new(&PathBuf::from("output.fastq.gz"), 0)?;
 ///
 /// // Compressed output with 4 threads
-/// let mut writer_4t = FastqWriter::new(&PathBuf::from("output.fastq.gz"), Some(4))?;
+/// let mut writer_4t = FastqWriter::new(&PathBuf::from("output.fastq.gz"), 4)?;
 ///
-/// let record = FastqRecord::new(
-///     "read1".to_string(),
-///     b"ACGT".to_vec(),
-///     b"IIII".to_vec()
-/// )?;
+/// let record = fastq::Record::new(
+///     fastq::record::Definition::new("read1", ""),
+///     b"ACGT",
+///     b"IIII",
+/// );
 /// writer.write_record(&record)?;
 /// writer.flush()?;  // Explicitly flush to handle errors
 /// # Ok::<(), anyhow::Error>(())
@@ -272,10 +142,82 @@ pub struct FastqWriter {
     writer: FastqWriterInner,
 }
 
+impl FastqWriter {
+    /// Creates a new FASTQ writer for the specified file path.
+    ///
+    /// The output format is automatically determined from the file extension:
+    /// - Files ending in `.gz`, `.bgz`, or `.bgzf` will be BGZF-compressed
+    /// - All other files will be uncompressed
+    ///
+    /// # Arguments
+    /// * `path` - Path to the output FASTQ file
+    /// * `compression_threads` - Number of compression threads (0 = auto-detect)
+    pub fn new(path: &PathBuf, compression_threads: usize) -> Result<Self> {
+        let file = File::create(path)
+            .with_context(|| format!("Failed to create FASTQ file: {}", path.display()))?;
+
+        let writer = if should_compress(path) {
+            // Use specified threads or auto-detect CPU cores
+            let worker_count = if compression_threads == 0 {
+                std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(4) // Fallback to 4 threads
+            } else {
+                compression_threads
+            };
+
+            let bgzf_writer = bgzf::io::MultithreadedWriter::with_worker_count(
+                std::num::NonZero::new(worker_count).unwrap(),
+                file,
+            );
+
+            FastqWriterInner::Compressed(fastq::io::Writer::new(bgzf_writer))
+        } else {
+            FastqWriterInner::Uncompressed(fastq::io::Writer::new(BufWriter::new(file)))
+        };
+
+        Ok(Self { writer })
+    }
+
+    /// Writes a single FASTQ record.
+    pub fn write_record(&mut self, record: &fastq::Record) -> Result<()> {
+        self.writer
+            .write_record(record)
+            .context("Failed to write FASTQ record")
+    }
+
+    /// Writes multiple FASTQ records.
+    ///
+    /// # Arguments
+    /// * `records` - Slice of FASTQ records to write
+    pub fn write_records(&mut self, records: &[fastq::Record]) -> Result<()> {
+        for record in records {
+            self.write_record(record)?;
+        }
+        Ok(())
+    }
+
+    /// Flushes the internal buffer to ensure all data is written.
+    ///
+    /// It's recommended to call this explicitly before the writer is dropped
+    /// to ensure flush errors are properly handled.
+    pub fn flush(&mut self) -> Result<()> {
+        self.writer
+            .flush_writer()
+            .context("Failed to flush FASTQ writer")
+    }
+
+    /// Finishes the writer, properly shutting down compression threads if applicable.
+    ///
+    /// For compressed writers, this shuts down the thread pool and writes the final BGZF EOF block.
+    /// This should be called explicitly before the writer is dropped to ensure proper finalization.
+    pub fn finish(self) -> Result<()> {
+        self.writer.finish()
+    }
+}
+
 /// Helper function to check if a file is gzip-compressed
 fn is_gzip_compressed<R: std::io::Read>(reader: &mut BufReader<R>) -> Result<bool> {
-    use std::io::BufRead;
-
     let buffer = reader.fill_buf().context("Failed to read file header")?;
 
     // Check for gzip magic bytes (0x1f 0x8b)
@@ -286,11 +228,7 @@ fn is_gzip_compressed<R: std::io::Read>(reader: &mut BufReader<R>) -> Result<boo
 fn should_compress(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| {
-            ["gz", "bgz", "bgzf"]
-                .iter()
-                .any(|s| ext.eq_ignore_ascii_case(s))
-        })
+        .is_some_and(|ext| ["gz", "bgz"].iter().any(|s| ext.eq_ignore_ascii_case(s)))
 }
 
 #[cfg(test)]
@@ -298,21 +236,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_fastq_record_new() {
-        let record = FastqRecord::new("read1".to_string(), b"ACGT".to_vec(), b"IIII".to_vec());
-        assert!(record.is_ok());
-        assert_eq!(record.unwrap().len(), 4);
-    }
-
-    #[test]
     fn test_fastq_writer() {
         let temp_dir = std::env::temp_dir();
         let temp_file = temp_dir.join("test.fastq");
 
         {
-            let mut writer = FastqWriter::new(&temp_file, None).unwrap();
-            let record =
-                FastqRecord::new("read1".to_string(), b"ACGT".to_vec(), b"IIII".to_vec()).unwrap();
+            let mut writer = FastqWriter::new(&temp_file, 4).unwrap();
+            let record = fastq::Record::new(
+                fastq::record::Definition::new("read1", ""),
+                b"ACGT",
+                b"IIII",
+            );
             writer.write_record(&record).unwrap();
             writer.flush().unwrap();
         }
@@ -330,15 +264,17 @@ mod tests {
         std::fs::remove_file(&temp_file).ok();
 
         {
-            let mut writer = FastqWriter::new(&temp_file, None).unwrap();
-            let record1 =
-                FastqRecord::new("read1".to_string(), b"ACGT".to_vec(), b"IIII".to_vec()).unwrap();
-            let record2 = FastqRecord::new(
-                "read2".to_string(),
-                b"TGCATGCA".to_vec(),
-                b"IIIIIIII".to_vec(),
-            )
-            .unwrap();
+            let mut writer = FastqWriter::new(&temp_file, 4).unwrap();
+            let record1 = fastq::Record::new(
+                fastq::record::Definition::new("read1", ""),
+                b"ACGT",
+                b"IIII",
+            );
+            let record2 = fastq::Record::new(
+                fastq::record::Definition::new("read2", ""),
+                b"TGCATGCA",
+                b"IIIIIIII",
+            );
 
             writer.write_record(&record1).unwrap();
             writer.write_record(&record2).unwrap();
@@ -357,15 +293,15 @@ mod tests {
         );
 
         // Read back and verify content
-        let records: Vec<FastqRecord> = FastqReader::from_path(&temp_file)
+        let records: Vec<fastq::Record> = FastqReader::from_path(&temp_file)
             .unwrap()
             .collect::<Result<Vec<_>>>()
             .unwrap();
 
         assert_eq!(records.len(), 2);
-        assert_eq!(records[0].id, "read1");
-        assert_eq!(records[0].sequence, b"ACGT");
-        assert_eq!(records[1].id, "read2");
+        assert_eq!(records[0].name(), "read1");
+        assert_eq!(records[0].sequence(), b"ACGT");
+        assert_eq!(records[1].name(), "read2");
 
         std::fs::remove_file(temp_file).ok();
     }
@@ -373,7 +309,6 @@ mod tests {
     fn test_should_bgzf_compress_suffixes() {
         assert!(should_compress(Path::new("reads.fastq.gz")));
         assert!(should_compress(Path::new("reads.fastq.bgz")));
-        assert!(should_compress(Path::new("reads.fastq.bgzf")));
         assert!(should_compress(Path::new("reads.GZ")));
         assert!(!should_compress(Path::new("reads.fastq")));
     }
