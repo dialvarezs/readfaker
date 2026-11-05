@@ -186,17 +186,6 @@ impl FastqWriter {
             .context("Failed to write FASTQ record")
     }
 
-    /// Writes multiple FASTQ records.
-    ///
-    /// # Arguments
-    /// * `records` - Slice of FASTQ records to write
-    pub fn write_records(&mut self, records: &[fastq::Record]) -> Result<()> {
-        for record in records {
-            self.write_record(record)?;
-        }
-        Ok(())
-    }
-
     /// Flushes the internal buffer to ensure all data is written.
     ///
     /// It's recommended to call this explicitly before the writer is dropped

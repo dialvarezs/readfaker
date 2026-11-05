@@ -139,15 +139,6 @@ impl BamWriter {
             .context("Failed to write BAM record")
     }
 
-    /// Flushes the internal buffer to ensure all data is written.
-    pub fn flush(&mut self) -> Result<()> {
-        use std::io::Write;
-        self.writer
-            .get_mut()
-            .flush()
-            .context("Failed to flush BAM writer")
-    }
-
     /// Finishes the writer, properly finalizing the BAM file.
     ///
     /// This writes the BGZF EOF marker and flushes all buffered data.

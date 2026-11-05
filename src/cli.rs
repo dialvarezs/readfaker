@@ -78,10 +78,6 @@ pub mod fmt {
         style(text).bold().cyan().to_string()
     }
 
-    pub fn param(text: impl Display) -> String {
-        style(text).bold().to_string()
-    }
-
     /// Format a parameter with proper alignment (width must account for raw text length)
     pub fn param_aligned(text: &str, width: usize) -> String {
         format!(
