@@ -116,7 +116,7 @@ impl ErrorModel {
         let mut length = 1;
         // Simple geometric sampling: keep extending while random < rate
         // If rate is 0.0, this loop never runs, returns 1
-        while rng.random_range(0.0..1.0) < extension_rate && length <= EXTENSION_LIMIT {
+        while rng.random_range(0.0..1.0) < extension_rate && length < EXTENSION_LIMIT {
             length += 1;
         }
         length
@@ -277,5 +277,12 @@ mod tests {
 
         assert!(max_ins_len > 1);
         assert!(max_del_len > 1);
+    }
+
+    #[test]
+    fn test_indel_length_capped_at_limit() {
+        let model = ErrorModel::new(None, None, None, None, None).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+        assert_eq!(model.sample_length(&mut rng, 1.0), EXTENSION_LIMIT);
     }
 }
