@@ -19,10 +19,7 @@ impl LengthModel {
     /// # Arguments
     /// * `length` - Read length to add
     pub fn add_value(&mut self, length: usize) {
-        self.length_histogram
-            .entry(length)
-            .and_modify(|c| *c += 1)
-            .or_insert(1);
+        *self.length_histogram.entry(length).or_default() += 1;
         self.total_count += 1;
     }
 

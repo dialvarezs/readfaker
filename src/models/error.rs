@@ -79,35 +79,16 @@ impl ErrorModel {
         let ins_ext = insertion_extension_rate.unwrap_or(INSERTION_EXTENSION_DEFAULT_RATE);
         let del_ext = deletion_extension_rate.unwrap_or(DELETION_EXTENSION_DEFAULT_RATE);
 
-        if !(0.0..=1.0).contains(&substitution) {
-            bail!(
-                "Substitution rate must be between 0.0 and 1.0, got {}",
-                substitution
-            );
-        }
-        if !(0.0..=1.0).contains(&insertion) {
-            bail!(
-                "Insertion rate must be between 0.0 and 1.0, got {}",
-                insertion
-            );
-        }
-        if !(0.0..=1.0).contains(&deletion) {
-            bail!(
-                "Deletion rate must be between 0.0 and 1.0, got {}",
-                deletion
-            );
-        }
-        if !(0.0..=1.0).contains(&ins_ext) {
-            bail!(
-                "Insertion extension rate must be between 0.0 and 1.0, got {}",
-                ins_ext
-            );
-        }
-        if !(0.0..=1.0).contains(&del_ext) {
-            bail!(
-                "Deletion extension rate must be between 0.0 and 1.0, got {}",
-                del_ext
-            );
+        for (name, rate) in [
+            ("Substitution rate", substitution),
+            ("Insertion rate", insertion),
+            ("Deletion rate", deletion),
+            ("Insertion extension rate", ins_ext),
+            ("Deletion extension rate", del_ext),
+        ] {
+            if !(0.0..=1.0).contains(&rate) {
+                bail!("{} must be between 0.0 and 1.0, got {}", name, rate);
+            }
         }
 
         let sum = substitution + insertion + deletion;

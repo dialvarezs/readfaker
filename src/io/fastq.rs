@@ -6,7 +6,7 @@ use noodles::bgzf;
 use noodles::fastq;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Reader for FASTQ files
 pub struct FastqReader {
@@ -108,7 +108,7 @@ impl FastqWriterInner {
 /// Writer for FASTQ files supporting both uncompressed and BGZF-compressed output.
 ///
 /// Writes FASTQ records using buffered I/O. When using the `new()` constructor,
-/// compression is automatically enabled based on the file extension (`.gz`, `.bgz`, or `.bgzf`).
+/// compression is automatically enabled based on the file extension (`.gz` or `.bgz`).
 ///
 /// The buffer is automatically flushed when the writer is dropped, but flush
 /// errors are silently ignored. Call `flush()` explicitly if you need to
@@ -146,32 +146,21 @@ impl FastqWriter {
     /// Creates a new FASTQ writer for the specified file path.
     ///
     /// The output format is automatically determined from the file extension:
-    /// - Files ending in `.gz`, `.bgz`, or `.bgzf` will be BGZF-compressed
+    /// - Files ending in `.gz` or `.bgz` will be BGZF-compressed
     /// - All other files will be uncompressed
     ///
     /// # Arguments
     /// * `path` - Path to the output FASTQ file
     /// * `compression_threads` - Number of compression threads (0 = auto-detect)
-    pub fn new(path: &PathBuf, compression_threads: usize) -> Result<Self> {
+    pub fn new(path: &Path, compression_threads: usize) -> Result<Self> {
         let file = File::create(path)
             .with_context(|| format!("Failed to create FASTQ file: {}", path.display()))?;
 
         let writer = if should_compress(path) {
-            // Use specified threads or auto-detect CPU cores
-            let worker_count = if compression_threads == 0 {
-                std::thread::available_parallelism()
-                    .map(|n| n.get())
-                    .unwrap_or(4) // Fallback to 4 threads
-            } else {
-                compression_threads
-            };
-
-            let bgzf_writer = bgzf::io::MultithreadedWriter::with_worker_count(
-                std::num::NonZero::new(worker_count).unwrap(),
+            FastqWriterInner::Compressed(fastq::io::Writer::new(super::bgzf_writer(
                 file,
-            );
-
-            FastqWriterInner::Compressed(fastq::io::Writer::new(bgzf_writer))
+                compression_threads,
+            )))
         } else {
             FastqWriterInner::Uncompressed(fastq::io::Writer::new(BufWriter::new(file)))
         };

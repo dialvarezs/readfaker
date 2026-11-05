@@ -6,16 +6,22 @@ use rand::rngs::StdRng;
 use std::path::Path;
 use std::sync::LazyLock;
 
+/// Offset of Phred+33 ASCII quality encoding.
+pub const PHRED_OFFSET: u8 = 33;
+
 /// Mapping of Phred quality scores (0-93) to error probabilities.
 ///
 /// Error probability is calculated as: 10^(-Q/10)
-pub static QUALITY_MAPPING: LazyLock<[f32; 94]> = LazyLock::new(|| {
-    let mut mapping = [0.0_f32; 94];
-    for (q, slot) in mapping.iter_mut().enumerate() {
-        *slot = 10.0_f32.powf(-(q as f32) / 10.0);
+pub static QUALITY_MAPPING: LazyLock<[f32; 94]> =
+    LazyLock::new(|| std::array::from_fn(|q| 10.0_f32.powf(-(q as f32) / 10.0)));
+
+/// Creates a seeded RNG, or one seeded from system entropy if `seed` is None.
+pub fn make_rng(seed: Option<u64>) -> StdRng {
+    match seed {
+        Some(s) => StdRng::seed_from_u64(s),
+        None => StdRng::from_rng(&mut rand::rng()),
     }
-    mapping
-});
+}
 
 /// Loads length and quality models from an existing FASTQ or BAM file.
 ///
@@ -36,9 +42,10 @@ pub fn load_models(
     let mut length_model = LengthModel::new();
     let mut quality_model = QualityModel::new(None, None, None);
 
-    let mut rng = match seed {
-        Some(s) => StdRng::seed_from_u64(s),
-        None => StdRng::from_rng(&mut rand::rng()),
+    let mut rng = make_rng(seed);
+    let mut add = |length: usize, quality: Vec<u8>| {
+        length_model.add_value(length);
+        quality_model.add_value(length, quality, &mut rng);
     };
 
     // Detect file format based on file name (handles compound extensions like .fastq.gz)
@@ -59,25 +66,20 @@ pub fn load_models(
         let reader = BamReader::from_path(input_path)?;
         for record in reader {
             let record = record?;
-            let length = record.sequence().len();
             // Convert raw Phred scores (0-93) to Phred+33 ASCII encoding
-            let quality: Vec<u8> = record
+            let quality = record
                 .quality_scores()
                 .as_ref()
                 .iter()
-                .map(|&q| q.saturating_add(33))
+                .map(|&q| q.saturating_add(PHRED_OFFSET))
                 .collect();
-            length_model.add_value(length);
-            quality_model.add_value(length, quality, &mut rng);
+            add(record.sequence().len(), quality);
         }
     } else if base_name.ends_with(".fastq") || base_name.ends_with(".fq") {
         let reader = FastqReader::from_path(input_path)?;
         for record in reader {
             let record = record?;
-            let length = record.sequence().len();
-            let quality = record.quality_scores().to_vec();
-            length_model.add_value(length);
-            quality_model.add_value(length, quality, &mut rng);
+            add(record.sequence().len(), record.quality_scores().to_vec());
         }
     } else {
         anyhow::bail!(

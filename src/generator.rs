@@ -1,15 +1,13 @@
 use crate::io::fasta::FastaRecord;
 use crate::models::error::AlterationType;
 use crate::models::{ErrorModel, LengthModel, QualityModel};
-use crate::utils::QUALITY_MAPPING;
+use crate::utils::{PHRED_OFFSET, QUALITY_MAPPING, make_rng};
 use anyhow::{Result, anyhow, bail};
 use noodles::fastq;
 use rand::prelude::IndexedRandom;
 use rand::rngs::StdRng;
-use rand::{RngExt, SeedableRng};
+use rand::RngExt;
 use uuid::Uuid;
-
-const PHRED_OFFSET: u8 = 33;
 
 /// Generator for synthetic sequencing reads with realistic error profiles.
 ///
@@ -77,10 +75,7 @@ impl ReadGenerator {
             bail!("Reference sequences cannot be empty");
         }
 
-        let rng = match seed {
-            Some(s) => StdRng::seed_from_u64(s),
-            None => StdRng::from_rng(&mut rand::rng()),
-        };
+        let rng = make_rng(seed);
 
         Ok(Self {
             reference_sequences,
@@ -126,7 +121,7 @@ impl ReadGenerator {
 
             let (final_sequence, final_qualities) = self.apply_errors(sequence, qualities);
 
-            let id = format!("{}", Uuid::new_v4());
+            let id = Uuid::new_v4().to_string();
             return Ok(fastq::Record::new(
                 fastq::record::Definition::new(id, ""),
                 final_sequence,
@@ -224,6 +219,7 @@ impl ReadGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::SeedableRng;
 
     fn create_test_generator(sequences: Option<Vec<FastaRecord>>) -> Result<ReadGenerator> {
         let sequences = sequences.unwrap_or_else(|| {

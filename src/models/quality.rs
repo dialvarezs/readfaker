@@ -1,5 +1,5 @@
-use rand::{Rng, RngExt};
 use rand::seq::IndexedRandom;
+use rand::{Rng, RngExt};
 
 /// Default maximum read length before grouping into a catch-all bucket (20kb).
 const DEFAULT_MAX_BUCKET_LENGTH: usize = 20000;
@@ -133,13 +133,17 @@ impl QualityModel {
     /// * `quality` - Quality score string as byte vector (Phred+33 ASCII encoding)
     /// * `rng` - Random number generator for reservoir sampling
     pub fn add_value<R: Rng>(&mut self, length: usize, quality: Vec<u8>, rng: &mut R) {
-        let batch_idx = if length < self.max_bucket_length {
+        let batch_idx = self.bucket_index(length);
+        self.batches[batch_idx].add_value(quality, rng)
+    }
+
+    /// Index of the bucket holding reads of the given length.
+    fn bucket_index(&self, length: usize) -> usize {
+        if length < self.max_bucket_length {
             length / self.bucket_width
         } else {
             self.batches.len() - 1
-        };
-
-        self.batches[batch_idx].add_value(quality, rng)
+        }
     }
 
     /// Samples quality scores for a given read length.
@@ -157,11 +161,7 @@ impl QualityModel {
     /// Quality score byte vector truncated to the requested length, or None if no
     /// suitable quality strings are available in any bucket.
     pub fn sample<R: Rng>(&self, length: usize, rng: &mut R) -> Option<Vec<u8>> {
-        let mut batch_idx = if length < self.max_bucket_length {
-            length / self.bucket_width
-        } else {
-            self.batches.len() - 1
-        };
+        let mut batch_idx = self.bucket_index(length);
 
         loop {
             let candidates: Vec<_> = self.batches[batch_idx]

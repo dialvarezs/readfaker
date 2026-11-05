@@ -35,9 +35,6 @@ fn main() -> Result<()> {
             eprintln!("{}: {}", fmt::param_aligned("Random seed", 16), seed);
         }
         eprintln!();
-    }
-
-    if cli.verbose {
         eprintln!("{}", fmt::progress("Creating models from input FASTQ..."));
     }
     let (length_model, quality_model) = load_models(&cli.input, cli.seed)?;
@@ -52,31 +49,15 @@ fn main() -> Result<()> {
 
     if cli.verbose {
         eprintln!("Error Model Configuration:");
-        eprintln!(
-            "{}: {:.2}",
-            fmt::param_aligned("Substitution rate", 20),
-            error_model.substitution_rate
-        );
-        eprintln!(
-            "{}: {:.2}",
-            fmt::param_aligned("Insertion rate", 20),
-            error_model.insertion_rate
-        );
-        eprintln!(
-            "{}: {:.2}",
-            fmt::param_aligned("Deletion rate", 20),
-            error_model.deletion_rate
-        );
-        eprintln!(
-            "{}: {:.2}",
-            fmt::param_aligned("Ins. extension rate", 20),
-            error_model.insertion_extension_rate
-        );
-        eprintln!(
-            "{}: {:.2}",
-            fmt::param_aligned("Del. extension rate", 20),
-            error_model.deletion_extension_rate
-        );
+        for (name, rate) in [
+            ("Substitution rate", error_model.substitution_rate),
+            ("Insertion rate", error_model.insertion_rate),
+            ("Deletion rate", error_model.deletion_rate),
+            ("Ins. extension rate", error_model.insertion_extension_rate),
+            ("Del. extension rate", error_model.deletion_extension_rate),
+        ] {
+            eprintln!("{}: {:.2}", fmt::param_aligned(name, 20), rate);
+        }
         eprintln!();
     }
 
@@ -103,7 +84,7 @@ fn main() -> Result<()> {
         );
     }
 
-    match output_ext.to_lowercase().as_str() {
+    match output_ext.as_str() {
         "bam" => {
             let mut writer = BamWriter::new(&cli.output, cli.compression_threads)?;
             for _ in 0..cli.num_reads {
