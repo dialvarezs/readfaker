@@ -10,6 +10,7 @@ from real FASTQ data.
 - Automatic compression detection for input files (gzip/BGZF).
 - Multi-threaded BGZF compression for output files.
 - Configurable error rates and indel extension probabilities.
+- Homopolymer length errors that grow with run length.
 - Fast: can generate a million reads in under a minute.
 
 ## Motivation
@@ -51,11 +52,11 @@ readfaker -r <reference> -i <input> -o <output> -n <num_reads>
 - `-s, --seed <N>` - Random seed for reproducibility
 - `--compression-threads <N>` - Number of compression threads for output (default: 4)
 - `--compression-level <N>` - BGZF compression level for output, 0-12 (default: 2)
-- `--error-sub <RATE>` - Error substitution rate (default: 0.7)
-- `--error-ins <RATE>` - Error insertion rate (default: 0.1)
-- `--error-del <RATE>` - Error deletion rate (default: 0.2)
-- `--error-ins-ext <RATE>` - Insertion extension probability using geometric distribution (default: 0.4)
-- `--error-del-ext <RATE>` - Deletion extension probability using geometric distribution (default: 0.4)
+- `--error-sub <RATE>` - Error substitution rate (default: 0.55)
+- `--error-ins <RATE>` - Error insertion rate (default: 0.18)
+- `--error-del <RATE>` - Error deletion rate (default: 0.27)
+- `--error-ins-ext <RATE>` - Insertion extension probability using geometric distribution (default: 0.27)
+- `--error-del-ext <RATE>` - Deletion extension probability using geometric distribution (default: 0.3)
 - `--no-origin` - Don't write each read's origin (see [Read origin](#read-origin))
 - `-v, --verbose` - Enable verbose output
 
@@ -80,8 +81,16 @@ readfaker -r genome.fasta -i real_reads.fastq.gz -o simulated_reads.fastq.gz -n 
 1. **Model Extraction**: Reads an existing FASTQ or BAM file to build empirical models of read lengths and quality scores
 2. **Reference Loading**: Parses reference genome sequences from FASTA format
 3. **Read Generation**: Samples read lengths, selects random reference positions, applies quality profiles, and
-   introduces errors based on quality scores with configurable error rates and indel extension probabilities
+   introduces errors based on quality scores with configurable error rates and indel extension probabilities.
+   Homopolymer runs (3+ identical bases) also get length errors, mostly shortening, whose probability grows with
+   the run length and the read's error rate.
 4. **Output**: Writes FASTQ or BAM records with automatic multi-threaded BGZF compression for `.gz`, `.bgz`, `.bgzf`, or `.bam` files
+
+## Error model defaults
+
+Default error rates and the homopolymer model were measured on R10.4.1 reads (dorado fast, hac and sup) from
+bacterial isolates aligned to their own assemblies, and HG002 aligned to its Q100 assembly.
+They fit sup and hac data best; fast reads get somewhat too many errors in long homopolymers (8+).
 
 ## Read origin
 

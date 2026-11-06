@@ -8,6 +8,7 @@ use rand::RngExt;
 use rand::distr::Distribution;
 use rand::distr::weighted::WeightedIndex;
 use rand::rngs::SmallRng;
+use std::ops::Range;
 use uuid::Uuid;
 
 /// Maximum attempts to find a (length, reference, quality) combination before giving up.
@@ -157,6 +158,7 @@ impl ReadGenerator {
                 continue; // Skip if no quality string available
             };
 
+            let (sequence, qualities) = self.apply_homopolymer_errors(sequence, qualities);
             let (final_sequence, final_qualities) = self.apply_errors(sequence, qualities);
 
             let id = Uuid::new_v4().to_string();
@@ -171,6 +173,68 @@ impl ReadGenerator {
             "Failed to generate a read after {} attempts: sampled read lengths may exceed all reference sequences",
             MAX_ATTEMPTS
         )
+    }
+
+    /// Applies homopolymer length errors on top of the per-base errors.
+    ///
+    /// Each run of 3+ identical bases may be shortened or lengthened. The probability grows with
+    /// the run length and with the read's mean error probability.
+    ///
+    /// # Arguments
+    /// * `sequence` - Original nucleotide sequence
+    /// * `qualities` - Quality scores for each position
+    ///
+    /// # Returns
+    /// Tuple of (modified sequence, modified quality scores); the inputs are returned unchanged
+    /// when no run is altered
+    fn apply_homopolymer_errors(
+        &mut self,
+        sequence: Vec<u8>,
+        qualities: Vec<u8>,
+    ) -> (Vec<u8>, Vec<u8>) {
+        // Use the read's mean: qualities come from a different read, so the values at the run's
+        // positions say nothing about the run.
+        let probabilities = self
+            .error_model
+            .homopolymer_error_probabilities(mean_error_probability(&qualities));
+
+        // Bases before `copied` are already in the new vectors; nothing is copied until a run changes.
+        let mut new_sequence = Vec::new();
+        let mut new_quality = Vec::new();
+        let mut copied = 0;
+
+        for run in homopolymer_runs(&sequence) {
+            let run_length = run.len();
+            let probability = probabilities[run_length.min(probabilities.len() - 1)];
+            if self.rng.random::<f64>() >= probability {
+                continue;
+            }
+
+            new_sequence.extend_from_slice(&sequence[copied..run.end]);
+            new_quality.extend_from_slice(&qualities[copied..run.end]);
+            copied = run.end;
+
+            let change = self
+                .error_model
+                .get_homopolymer_alteration(run_length, &mut self.rng);
+            let count = change.unsigned_abs();
+            if change < 0 {
+                // keep at least one base of the run
+                let keep = new_sequence.len() - count.min(run_length - 1);
+                new_sequence.truncate(keep);
+                new_quality.truncate(keep);
+            } else {
+                new_sequence.extend(std::iter::repeat_n(sequence[run.start], count));
+                new_quality.extend(std::iter::repeat_n(qualities[run.end - 1], count));
+            }
+        }
+
+        if copied == 0 {
+            return (sequence, qualities);
+        }
+        new_sequence.extend_from_slice(&sequence[copied..]);
+        new_quality.extend_from_slice(&qualities[copied..]);
+        (new_sequence, new_quality)
     }
 
     /// Applies sequencing errors to a sequence based on quality scores and error model.
@@ -265,6 +329,9 @@ impl ReadGenerator {
 }
 
 /// Reverse-complements an uppercase ACGT sequence in place.
+///
+/// # Arguments
+/// * `sequence` - Nucleotide sequence to reverse-complement
 fn reverse_complement(sequence: &mut [u8]) {
     sequence.reverse();
     for base in sequence {
@@ -275,6 +342,62 @@ fn reverse_complement(sequence: &mut [u8]) {
             _ => b'A',
         };
     }
+}
+
+/// Finds all homopolymer runs of 3 or more identical bases.
+///
+/// Scans 64-base blocks with a branch-free bitmask (bit j set when bases j..j+3 are equal), since
+/// a base-by-base run scan mispredicts at nearly every run boundary.
+///
+/// # Arguments
+/// * `sequence` - Nucleotide sequence to scan
+///
+/// # Returns
+/// Position ranges of the runs, in order
+fn homopolymer_runs(sequence: &[u8]) -> Vec<Range<usize>> {
+    let n = sequence.len();
+    let mut runs: Vec<Range<usize>> = Vec::new();
+    let mut block = 0;
+    while block + 2 < n {
+        let width = (n - 2 - block).min(64);
+        let mut mask = 0u64;
+        for j in 0..width {
+            let k = block + j;
+            let equal = (sequence[k] == sequence[k + 1]) & (sequence[k + 1] == sequence[k + 2]);
+            mask |= u64::from(equal) << j;
+        }
+
+        while mask != 0 {
+            let start = block + mask.trailing_zeros() as usize;
+            mask &= mask - 1;
+            if runs.last().is_some_and(|run| start < run.end) {
+                continue; // inside the previous run
+            }
+            let mut end = start + 3;
+            while end < n && sequence[end] == sequence[start] {
+                end += 1;
+            }
+            runs.push(start..end);
+        }
+        block += 64;
+    }
+    runs
+}
+
+/// Computes the mean per-base error probability of a read from its quality scores.
+///
+/// # Arguments
+/// * `qualities` - Quality scores (Phred+33 ASCII)
+///
+/// # Returns
+/// Mean error probability, between 0 and 1
+fn mean_error_probability(qualities: &[u8]) -> f64 {
+    let thresholds = &*ERROR_THRESHOLDS;
+    let sum: u64 = qualities
+        .iter()
+        .map(|&q| u64::from(thresholds[usize::from(q)]))
+        .sum();
+    sum as f64 / (qualities.len() as f64 * f64::from(u32::MAX))
 }
 
 #[cfg(test)]
@@ -443,6 +566,60 @@ mod tests {
             forward > 50 && reverse > 50,
             "{forward} fwd / {reverse} rev"
         );
+    }
+
+    #[test]
+    fn test_homopolymer_errors_mostly_shorten_long_runs() {
+        let mut generator = create_test_generator(None).unwrap();
+        // Q0 => error probability 1, so every run with a non-zero weight is altered
+        let (mut shorter, mut longer) = (0, 0);
+        for _ in 0..1000 {
+            let (seq, qual) =
+                generator.apply_homopolymer_errors(b"CAAAAAAG".to_vec(), vec![b'!'; 8]);
+            assert_eq!(seq.len(), qual.len());
+            assert!(seq.starts_with(b"CA") && seq.ends_with(b"AG"));
+            assert!(seq[1..seq.len() - 1].iter().all(|&b| b == b'A'));
+            match seq.len().cmp(&8) {
+                std::cmp::Ordering::Less => shorter += 1,
+                std::cmp::Ordering::Greater => longer += 1,
+                std::cmp::Ordering::Equal => panic!("run of 6 left unchanged at Q0"),
+            }
+        }
+        assert!(
+            (700..800).contains(&shorter),
+            "{shorter} shorter / {longer} longer"
+        );
+
+        // Runs of 1-2 bases are left to the per-base error model
+        let (seq, _) = generator.apply_homopolymer_errors(b"ACCGTTA".to_vec(), vec![b'!'; 7]);
+        assert_eq!(seq, b"ACCGTTA");
+    }
+
+    #[test]
+    fn test_homopolymer_scan_finds_runs_at_block_edges() {
+        fn rle(seq: &[u8]) -> Vec<(u8, usize)> {
+            seq.chunk_by(|a, b| a == b)
+                .map(|r| (r[0], r.len()))
+                .collect()
+        }
+        // Runs at the start, straddling the 64-base block boundary, and at the very end
+        let mut seq = b"GGG".to_vec();
+        seq.extend(b"ACTACTACTACTACTACTACTACTACTACTACTACTACTACTACTACTACTACTACTAC"); // to 62
+        seq.extend(b"TTTT"); // 62..66
+        seq.extend(b"ACGACGACGACGACGACG");
+        seq.extend(b"CCC");
+        let mut generator = create_test_generator(None).unwrap();
+
+        let (out, _) = generator.apply_homopolymer_errors(seq.clone(), vec![b'!'; seq.len()]);
+        let (before, after) = (rle(&seq), rle(&out));
+        assert_eq!(before.len(), after.len());
+        let changed: Vec<_> = before
+            .iter()
+            .zip(&after)
+            .filter(|(b, a)| b != a)
+            .map(|(b, _)| *b)
+            .collect();
+        assert_eq!(changed, vec![(b'G', 3), (b'T', 4), (b'C', 3)]);
     }
 
     #[test]
