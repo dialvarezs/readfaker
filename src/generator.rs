@@ -1,13 +1,13 @@
 use crate::io::fasta::FastaRecord;
 use crate::models::error::AlterationType;
 use crate::models::{ErrorModel, LengthModel, QualityModel};
-use crate::utils::{PHRED_OFFSET, QUALITY_MAPPING, make_rng};
+use crate::utils::{ERROR_THRESHOLDS, make_rng};
 use anyhow::{Result, anyhow, bail};
 use noodles::fastq;
 use rand::RngExt;
 use rand::distr::Distribution;
 use rand::distr::weighted::WeightedIndex;
-use rand::rngs::StdRng;
+use rand::rngs::SmallRng;
 use uuid::Uuid;
 
 /// Maximum attempts to find a (length, reference, quality) combination before giving up.
@@ -53,7 +53,7 @@ pub struct ReadGenerator {
     length_model: LengthModel,
     quality_model: QualityModel,
     error_model: ErrorModel,
-    rng: StdRng,
+    rng: SmallRng,
 }
 
 impl ReadGenerator {
@@ -162,23 +162,32 @@ impl ReadGenerator {
         let mut new_sequence = Vec::with_capacity(sequence.len());
         let mut new_quality = Vec::with_capacity(qualities.len());
 
+        let thresholds = &*ERROR_THRESHOLDS;
+        // Error-free stretches are copied in bulk; only error positions are handled per base
+        let mut run_start = 0;
         let mut i = 0;
         while i < sequence.len() {
             let quality_ascii = qualities[i];
-            let phred = usize::from(quality_ascii.saturating_sub(PHRED_OFFSET).min(93));
-            let error_probability = QUALITY_MAPPING[phred];
-            let alteration = if self.rng.random_range(0.0..1.0) <= error_probability {
+            let alteration = if self.rng.random::<u32>() <= thresholds[usize::from(quality_ascii)] {
                 self.error_model.get_alteration_type(&mut self.rng)
             } else {
                 None
             };
+            let Some(alteration) = alteration else {
+                i += 1;
+                continue;
+            };
+
+            new_sequence.extend_from_slice(&sequence[run_start..i]);
+            new_quality.extend_from_slice(&qualities[run_start..i]);
 
             match alteration {
-                Some(AlterationType::Substitution) => {
+                AlterationType::Substitution => {
                     new_sequence.push(self.get_random_nucleotide(Some(sequence[i])));
                     new_quality.push(quality_ascii);
+                    i += 1;
                 }
-                Some(AlterationType::Insertion(count)) => {
+                AlterationType::Insertion(count) => {
                     new_sequence.push(sequence[i]);
                     new_quality.push(quality_ascii);
 
@@ -186,20 +195,16 @@ impl ReadGenerator {
                         new_sequence.push(self.get_random_nucleotide(None));
                         new_quality.push(quality_ascii); // reuse the same quality for inserted bases
                     }
+                    i += 1;
                 }
-                Some(AlterationType::Deletion(count)) => {
-                    let skip = count.max(1).min(sequence.len() - i);
-                    i += skip;
-                    continue;
-                }
-                None => {
-                    new_sequence.push(sequence[i]);
-                    new_quality.push(quality_ascii);
+                AlterationType::Deletion(count) => {
+                    i += count.max(1).min(sequence.len() - i);
                 }
             }
-
-            i += 1;
+            run_start = i;
         }
+        new_sequence.extend_from_slice(&sequence[run_start..]);
+        new_quality.extend_from_slice(&qualities[run_start..]);
 
         (new_sequence, new_quality)
     }
@@ -237,6 +242,7 @@ impl ReadGenerator {
 mod tests {
     use super::*;
     use rand::SeedableRng;
+    use rand::rngs::StdRng;
 
     fn create_test_generator(sequences: Option<Vec<FastaRecord>>) -> Result<ReadGenerator> {
         let sequences = sequences.unwrap_or_else(|| {
@@ -279,7 +285,11 @@ mod tests {
         for _ in 0..5 {
             let read = generator.generate_read().unwrap();
             assert_eq!(read.sequence().len(), 10);
-            assert!(read.quality_scores().iter().all(|&q| q >= PHRED_OFFSET));
+            assert!(
+                read.quality_scores()
+                    .iter()
+                    .all(|&q| q >= crate::utils::PHRED_OFFSET)
+            );
             // Verify the ID is a valid UUID
             let name_str = std::str::from_utf8(read.name()).unwrap();
             assert!(
