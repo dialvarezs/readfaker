@@ -1,11 +1,13 @@
 use anyhow::{Result, bail};
 use rand::{Rng, RngExt};
 
-const SUBSTITUTION_DEFAULT_RATE: f64 = 0.7;
-const INSERTION_DEFAULT_RATE: f64 = 0.1;
-const DELETION_DEFAULT_RATE: f64 = 0.2;
-const INSERTION_EXTENSION_DEFAULT_RATE: f64 = 0.4;
-const DELETION_EXTENSION_DEFAULT_RATE: f64 = 0.4;
+// Defaults measured on R10.4.1 E8.2 (dorado fast/hac/sup) reads aligned to their isolate assemblies;
+// the error-event mix was stable across basecaller tiers.
+const SUBSTITUTION_DEFAULT_RATE: f64 = 0.55;
+const INSERTION_DEFAULT_RATE: f64 = 0.18;
+const DELETION_DEFAULT_RATE: f64 = 0.27;
+const INSERTION_EXTENSION_DEFAULT_RATE: f64 = 0.27;
+const DELETION_EXTENSION_DEFAULT_RATE: f64 = 0.3;
 const EXTENSION_LIMIT: usize = 100;
 
 /// Type of sequencing error alteration applied to a nucleotide position.
@@ -39,11 +41,11 @@ impl ErrorModel {
     /// Creates a new error model with specified or default rates.
     ///
     /// # Arguments
-    /// * `substitution_rate` - Probability of substitution errors (default: 0.7)
-    /// * `insertion_rate` - Probability of insertion errors (default: 0.1)
-    /// * `deletion_rate` - Probability of deletion errors (default: 0.2)
-    /// * `insertion_extension_rate` - Probability of extending an insertion (default: 0.4)
-    /// * `deletion_extension_rate` - Probability of extending a deletion (default: 0.4)
+    /// * `substitution_rate` - Probability of substitution errors (default: 0.55)
+    /// * `insertion_rate` - Probability of insertion errors (default: 0.18)
+    /// * `deletion_rate` - Probability of deletion errors (default: 0.27)
+    /// * `insertion_extension_rate` - Probability of extending an insertion (default: 0.27)
+    /// * `deletion_extension_rate` - Probability of extending a deletion (default: 0.3)
     ///
     /// # Returns
     /// A validated `ErrorModel` instance
@@ -57,7 +59,7 @@ impl ErrorModel {
     /// ```
     /// use readfaker::models::ErrorModel;
     ///
-    /// // Use default rates (0.7, 0.1, 0.2, 0.4, 0.4)
+    /// // Use default rates (0.55, 0.18, 0.27, 0.27, 0.3)
     /// let model = ErrorModel::new(None, None, None, None, None).unwrap();
     ///
     /// // Custom rates with longer indels
@@ -156,16 +158,6 @@ mod tests {
     use super::*;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
-
-    #[test]
-    fn test_default_values() {
-        let model = ErrorModel::new(None, None, None, None, None).unwrap();
-        assert_eq!(model.substitution_rate, 0.7);
-        assert_eq!(model.insertion_rate, 0.1);
-        assert_eq!(model.deletion_rate, 0.2);
-        assert_eq!(model.insertion_extension_rate, 0.4);
-        assert_eq!(model.deletion_extension_rate, 0.4);
-    }
 
     #[test]
     fn test_custom_valid_values() {

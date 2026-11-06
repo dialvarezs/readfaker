@@ -49,23 +49,23 @@ pub struct Cli {
     #[arg(long = "compression-level", default_value = "2", value_parser = clap::value_parser!(u8).range(0..=12))]
     pub compression_level: u8,
 
-    /// Error substitution rate (default: 0.7)
+    /// Error substitution rate (default: 0.55)
     #[arg(long, value_name = "RATE")]
     pub error_sub: Option<f64>,
 
-    /// Error insertion rate (default: 0.1)
+    /// Error insertion rate (default: 0.18)
     #[arg(long, value_name = "RATE")]
     pub error_ins: Option<f64>,
 
-    /// Error deletion rate (default: 0.2)
+    /// Error deletion rate (default: 0.27)
     #[arg(long, value_name = "RATE")]
     pub error_del: Option<f64>,
 
-    /// Error insertion extension rate (default: 0.4)
+    /// Error insertion extension rate (default: 0.27)
     #[arg(long, value_name = "RATE")]
     pub error_ins_ext: Option<f64>,
 
-    /// Error deletion extension rate (default: 0.4)
+    /// Error deletion extension rate (default: 0.3)
     #[arg(long, value_name = "RATE")]
     pub error_del_ext: Option<f64>,
 
