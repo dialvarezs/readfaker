@@ -66,6 +66,7 @@ fn main() -> Result<()> {
         length_model,
         quality_model,
         error_model,
+        cli.circular,
         cli.seed,
     )?;
 

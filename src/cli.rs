@@ -69,6 +69,10 @@ pub struct Cli {
     #[arg(long, value_name = "RATE")]
     pub error_del_ext: Option<f64>,
 
+    /// Treat all reference sequences as circular, so reads can span the end and start of a contig
+    #[arg(long)]
+    pub circular: bool,
+
     /// Don't write each read's origin (contig:start-end:strand) as the XO tag
     #[arg(long)]
     pub no_origin: bool,

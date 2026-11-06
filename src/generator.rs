@@ -47,6 +47,7 @@ pub const ORIGIN_TAG: &str = "XO";
 ///     length_model,
 ///     quality_model,
 ///     error_model,
+///     false,
 ///     Some(42),
 /// ).unwrap();
 /// let read = generator.generate_read().unwrap();
@@ -58,6 +59,8 @@ pub struct ReadGenerator {
     length_model: LengthModel,
     quality_model: QualityModel,
     error_model: ErrorModel,
+    /// Reads may span the end and start of each reference sequence.
+    circular: bool,
     rng: SmallRng,
 }
 
@@ -68,6 +71,7 @@ impl ReadGenerator {
     /// * `reference_sequences` - Reference genomes to sample subsequences from (must not be empty)
     /// * `length_model` - Empirical model of read lengths
     /// * `quality_model` - Empirical model of quality scores by read length
+    /// * `circular` - Treat all reference sequences as circular
     /// * `seed` - Optional random seed for reproducibility (uses system entropy if None)
     ///
     /// # Returns
@@ -80,6 +84,7 @@ impl ReadGenerator {
         length_model: LengthModel,
         quality_model: QualityModel,
         error_model: ErrorModel,
+        circular: bool,
         seed: Option<u64>,
     ) -> Result<Self> {
         if reference_sequences.is_empty() {
@@ -108,6 +113,7 @@ impl ReadGenerator {
             length_model,
             quality_model,
             error_model,
+            circular,
             rng,
         })
     }
@@ -138,10 +144,23 @@ impl ReadGenerator {
                 continue;
             }
 
-            let max_start = reference_sequence.sequence.len() - length;
+            let contig = &reference_sequence.sequence;
+            let max_start = if self.circular {
+                contig.len() - 1
+            } else {
+                contig.len() - length
+            };
             let start_position = self.rng.random_range(0..=max_start);
-            let mut sequence =
-                reference_sequence.sequence[start_position..start_position + length].to_vec();
+            let end_position = start_position + length;
+            let mut sequence = if end_position <= contig.len() {
+                contig[start_position..end_position].to_vec()
+            } else {
+                [
+                    &contig[start_position..],
+                    &contig[..end_position - contig.len()],
+                ]
+                .concat()
+            };
             let reverse = self.rng.random_bool(0.5);
             if reverse {
                 reverse_complement(&mut sequence);
@@ -150,7 +169,7 @@ impl ReadGenerator {
                 "{ORIGIN_TAG}:Z:{}:{}-{}:{}",
                 reference_sequence.id,
                 start_position + 1,
-                start_position + length,
+                (end_position - 1) % contig.len() + 1,
                 if reverse { '-' } else { '+' }
             );
 
@@ -427,6 +446,7 @@ mod tests {
             length_model,
             quality_model,
             error_model,
+            false,
             Some(42),
         )
     }
@@ -516,7 +536,7 @@ mod tests {
     }
 
     /// Generator whose quality strings are all Q93, so reads are effectively error-free.
-    fn error_free_generator(sequence: &[u8], length: usize) -> ReadGenerator {
+    fn error_free_generator(sequence: &[u8], length: usize, circular: bool) -> ReadGenerator {
         let mut length_model = LengthModel::new();
         let mut quality_model = QualityModel::new(None, None, None);
         length_model.add_value(length);
@@ -529,6 +549,7 @@ mod tests {
             length_model,
             quality_model,
             ErrorModel::new(None, None, None, None, None).unwrap(),
+            circular,
             Some(7),
         )
         .unwrap()
@@ -537,7 +558,7 @@ mod tests {
     #[test]
     fn test_origin_matches_sequence_on_both_strands() {
         let reference = b"AACCGTTAGCATGCATTTGACCAGTAGGCATCAGGTACCGATCGATGCA";
-        let mut generator = error_free_generator(reference, 12);
+        let mut generator = error_free_generator(reference, 12, false);
         let (mut forward, mut reverse) = (0, 0);
 
         for _ in 0..200 {
@@ -566,6 +587,38 @@ mod tests {
             forward > 50 && reverse > 50,
             "{forward} fwd / {reverse} rev"
         );
+    }
+
+    #[test]
+    fn test_circular_reads_span_contig_end() {
+        let reference = b"AACCGTTAGCATGCATTTGA";
+        let mut generator = error_free_generator(reference, 12, true);
+        let mut wrapped = 0;
+
+        for _ in 0..300 {
+            let read = generator.generate_read().unwrap();
+            let origin = std::str::from_utf8(read.description()).unwrap();
+            let (range, strand) = origin
+                .strip_prefix("XO:Z:chr1:")
+                .unwrap()
+                .split_once(':')
+                .unwrap();
+            let (start, end) = range.split_once('-').unwrap();
+            let (start, end): (usize, usize) = (start.parse().unwrap(), end.parse().unwrap());
+
+            let mut expected = if start <= end {
+                reference[start - 1..end].to_vec()
+            } else {
+                wrapped += 1;
+                [&reference[start - 1..], &reference[..end]].concat()
+            };
+            if strand == "-" {
+                reverse_complement(&mut expected);
+            }
+            assert_eq!(read.sequence(), expected.as_slice(), "origin {origin}");
+        }
+        // 11 of 20 start positions wrap around
+        assert!(wrapped > 100, "{wrapped} reads wrapped");
     }
 
     #[test]
@@ -624,7 +677,7 @@ mod tests {
 
     #[test]
     fn test_reference_normalized_to_uppercase_acgt() {
-        let mut generator = error_free_generator(b"acgtNNRYacgt", 12);
+        let mut generator = error_free_generator(b"acgtNNRYacgt", 12, false);
         let read = generator.generate_read().unwrap();
         assert!(read.sequence().iter().all(|b| b"ACGT".contains(b)));
     }

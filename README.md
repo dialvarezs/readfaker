@@ -57,6 +57,7 @@ readfaker -r <reference> -i <input> -o <output> -n <num_reads>
 - `--error-del <RATE>` - Error deletion rate (default: 0.27)
 - `--error-ins-ext <RATE>` - Insertion extension probability using geometric distribution (default: 0.27)
 - `--error-del-ext <RATE>` - Deletion extension probability using geometric distribution (default: 0.3)
+- `--circular` - Treat all reference sequences as circular, so reads can span the end and start of a contig (e.g. bacterial chromosomes and plasmids)
 - `--no-origin` - Don't write each read's origin (see [Read origin](#read-origin))
 - `-v, --verbose` - Enable verbose output
 
@@ -95,6 +96,7 @@ They fit sup and hac data best; fast reads get somewhat too many errors in long 
 ## Read origin
 
 Each read records where it was sampled from as an `XO:Z:<contig>:<start>-<end>:<strand>` tag (1-based, inclusive reference coordinates; strand `+` or `-`).
+With `--circular`, a read that spans the end of a contig has `end < start` (e.g. `plasmid1:4801-300:+`).
 In FASTQ output it is the header comment; in BAM output it is an aux tag.
 Use `--no-origin` to omit it, e.g. for blind tests where reads must not be told apart from real ones.
 
