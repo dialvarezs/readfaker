@@ -50,6 +50,7 @@ readfaker -r <reference> -i <input> -o <output> -n <num_reads>
 - `-n, --num-reads <N>` - Number of reads to generate (default: 100000)
 - `-s, --seed <N>` - Random seed for reproducibility
 - `--compression-threads <N>` - Number of compression threads for output (default: 4)
+- `--compression-level <N>` - BGZF compression level for output, 0-12 (default: 2)
 - `--error-sub <RATE>` - Error substitution rate (default: 0.7)
 - `--error-ins <RATE>` - Error insertion rate (default: 0.1)
 - `--error-del <RATE>` - Error deletion rate (default: 0.2)

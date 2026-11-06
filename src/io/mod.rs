@@ -9,6 +9,7 @@ pub mod fastq;
 use anyhow::{Context, Result};
 use flate2::read::MultiGzDecoder;
 use noodles::bgzf;
+pub use noodles::bgzf::io::writer::CompressionLevel;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::num::NonZero;
@@ -20,11 +21,18 @@ pub use fasta::FastaReader;
 pub use fastq::FastqWriter;
 
 /// Creates a multithreaded BGZF writer (`compression_threads` = 0 auto-detects CPU cores).
-fn bgzf_writer(file: File, compression_threads: usize) -> bgzf::io::MultithreadedWriter<File> {
+fn bgzf_writer(
+    file: File,
+    compression_threads: usize,
+    compression_level: CompressionLevel,
+) -> bgzf::io::MultithreadedWriter<File> {
     let worker_count = NonZero::new(compression_threads)
         .or_else(|| std::thread::available_parallelism().ok())
         .unwrap_or(NonZero::new(4).unwrap());
-    bgzf::io::MultithreadedWriter::with_worker_count(worker_count, file)
+    bgzf::io::multithreaded_writer::Builder::default()
+        .set_worker_count(worker_count)
+        .set_compression_level(compression_level)
+        .build_from_writer(file)
 }
 
 /// Opens a file for buffered reading, transparently decompressing gzip/BGZF (detected by magic bytes).

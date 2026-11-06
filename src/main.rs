@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use readfaker::cli::{Cli, fmt};
 use readfaker::generator::ReadGenerator;
-use readfaker::io::{BamWriter, FastaReader, FastqWriter};
+use readfaker::io::{BamWriter, CompressionLevel, FastaReader, FastqWriter};
 use readfaker::models::ErrorModel;
 use readfaker::utils::load_models;
 
@@ -84,9 +84,11 @@ fn main() -> Result<()> {
         );
     }
 
+    let compression_level = CompressionLevel::try_from(cli.compression_level)?;
     match output_ext.as_str() {
         "bam" => {
-            let mut writer = BamWriter::new(&cli.output, cli.compression_threads)?;
+            let mut writer =
+                BamWriter::new(&cli.output, cli.compression_threads, compression_level)?;
             for _ in 0..cli.num_reads {
                 let read = generator.generate_read()?;
                 let name = std::str::from_utf8(read.name()).expect("UUID should be valid UTF-8");
@@ -96,7 +98,8 @@ fn main() -> Result<()> {
         }
         _ => {
             // Default to FASTQ for all other extensions
-            let mut writer = FastqWriter::new(&cli.output, cli.compression_threads)?;
+            let mut writer =
+                FastqWriter::new(&cli.output, cli.compression_threads, compression_level)?;
             for _ in 0..cli.num_reads {
                 let read = generator.generate_read()?;
                 writer.write_record(&read)?;
