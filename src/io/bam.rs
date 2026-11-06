@@ -1,12 +1,17 @@
 //! BAM file reading and writing.
 
 use super::CompressionLevel;
+use crate::generator::ORIGIN_TAG;
 use crate::utils::PHRED_OFFSET;
 use anyhow::{Context, Result};
 use noodles::bam;
 use noodles::bgzf;
 use noodles::sam;
 use noodles::sam::alignment::RecordBuf;
+use noodles::sam::alignment::record::data::field::Tag;
+use noodles::sam::alignment::record_buf::data::field::Value;
+
+const ORIGIN: Tag = Tag::new(ORIGIN_TAG.as_bytes()[0], ORIGIN_TAG.as_bytes()[1]);
 use std::fs::File;
 use std::path::Path;
 
@@ -109,11 +114,13 @@ impl BamWriter {
     /// * `name` - Read name/identifier
     /// * `sequence` - Nucleotide sequence
     /// * `quality_ascii` - Quality scores in Phred+33 ASCII encoding
+    /// * `origin` - Optional read origin, stored in the `ORIGIN_TAG` aux tag
     pub fn write_record(
         &mut self,
         name: &str,
         sequence: &[u8],
         quality_ascii: &[u8],
+        origin: Option<&str>,
     ) -> Result<()> {
         use noodles::sam::alignment::io::Write as AlignmentWrite;
 
@@ -129,6 +136,12 @@ impl BamWriter {
             .set_flags(sam::alignment::record::Flags::UNMAPPED)
             .set_sequence(sequence.to_vec().into())
             .set_quality_scores(quality_phred.into())
+            .set_data(
+                origin
+                    .map(|o| (ORIGIN, Value::from(o)))
+                    .into_iter()
+                    .collect(),
+            )
             .build();
 
         self.writer
@@ -164,8 +177,12 @@ mod tests {
         // 'J' = 74 (ASCII) = Phred 41
         {
             let mut writer = BamWriter::new(&temp_file, 4, CompressionLevel::default()).unwrap();
-            writer.write_record("read1", b"ACGT", b"IIII").unwrap();
-            writer.write_record("read2", b"TGCA", b"JJJJ").unwrap();
+            writer
+                .write_record("read1", b"ACGT", b"IIII", None)
+                .unwrap();
+            writer
+                .write_record("read2", b"TGCA", b"JJJJ", None)
+                .unwrap();
             writer.finish().unwrap();
         }
 
@@ -217,7 +234,9 @@ mod tests {
         // Write a BAM file
         {
             let mut writer = BamWriter::new(&temp_file, 4, CompressionLevel::default()).unwrap();
-            writer.write_record("read1", b"ACGT", b"IIII").unwrap();
+            writer
+                .write_record("read1", b"ACGT", b"IIII", None)
+                .unwrap();
             writer.finish().unwrap();
         }
 

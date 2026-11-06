@@ -13,6 +13,10 @@ use uuid::Uuid;
 /// Maximum attempts to find a (length, reference, quality) combination before giving up.
 const MAX_ATTEMPTS: usize = 1000;
 
+/// SAM tag holding the read's origin (`contig:start-end:strand`, 1-based inclusive).
+/// Written as the FASTQ description (`XO:Z:...`) and as a BAM aux tag.
+pub const ORIGIN_TAG: &str = "XO";
+
 /// Generator for synthetic sequencing reads with realistic error profiles.
 ///
 /// Produces FASTQ records by sampling subsequences from reference genomes and applying
@@ -71,7 +75,7 @@ impl ReadGenerator {
     /// # Errors
     /// Returns an error if `reference_sequences` is empty
     pub fn new(
-        reference_sequences: Vec<FastaRecord>,
+        mut reference_sequences: Vec<FastaRecord>,
         length_model: LengthModel,
         quality_model: QualityModel,
         error_model: ErrorModel,
@@ -84,7 +88,18 @@ impl ReadGenerator {
         let reference_weights =
             WeightedIndex::new(reference_sequences.iter().map(|r| r.sequence.len()))
                 .map_err(|e| anyhow!("Invalid reference sequences: {}", e))?;
-        let rng = make_rng(seed);
+        let mut rng = make_rng(seed);
+
+        // Nanopore reads are uppercase ACGT only: uppercase soft-masked bases and
+        // replace N/IUPAC codes with a random base.
+        for record in &mut reference_sequences {
+            for base in &mut record.sequence {
+                *base = match base.to_ascii_uppercase() {
+                    b @ (b'A' | b'C' | b'G' | b'T') => b,
+                    _ => b"ACGT"[rng.random_range(0..4)],
+                };
+            }
+        }
 
         Ok(Self {
             reference_sequences,
@@ -124,8 +139,19 @@ impl ReadGenerator {
 
             let max_start = reference_sequence.sequence.len() - length;
             let start_position = self.rng.random_range(0..=max_start);
-            let sequence =
+            let mut sequence =
                 reference_sequence.sequence[start_position..start_position + length].to_vec();
+            let reverse = self.rng.random_bool(0.5);
+            if reverse {
+                reverse_complement(&mut sequence);
+            }
+            let origin = format!(
+                "{ORIGIN_TAG}:Z:{}:{}-{}:{}",
+                reference_sequence.id,
+                start_position + 1,
+                start_position + length,
+                if reverse { '-' } else { '+' }
+            );
 
             let Some(qualities) = self.quality_model.sample(length, &mut self.rng) else {
                 continue; // Skip if no quality string available
@@ -135,7 +161,7 @@ impl ReadGenerator {
 
             let id = Uuid::new_v4().to_string();
             return Ok(fastq::Record::new(
-                fastq::record::Definition::new(id, ""),
+                fastq::record::Definition::new(id, origin),
                 final_sequence,
                 final_qualities,
             ));
@@ -238,6 +264,19 @@ impl ReadGenerator {
     }
 }
 
+/// Reverse-complements an uppercase ACGT sequence in place.
+fn reverse_complement(sequence: &mut [u8]) {
+    sequence.reverse();
+    for base in sequence {
+        *base = match *base {
+            b'A' => b'T',
+            b'C' => b'G',
+            b'G' => b'C',
+            _ => b'A',
+        };
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -337,7 +376,13 @@ mod tests {
         let mut generator = create_test_generator(Some(vec![long, short])).unwrap();
 
         let from_short = (0..1000)
-            .filter(|_| generator.generate_read().unwrap().sequence()[0] == b'C')
+            .filter(|_| {
+                generator
+                    .generate_read()
+                    .unwrap()
+                    .description()
+                    .starts_with(b"XO:Z:short:")
+            })
             .count();
         // Expected ~1% (10/1000 bp); uniform choice would give ~50%
         assert!(
@@ -345,5 +390,65 @@ mod tests {
             "got {} reads from short contig",
             from_short
         );
+    }
+
+    /// Generator whose quality strings are all Q93, so reads are effectively error-free.
+    fn error_free_generator(sequence: &[u8], length: usize) -> ReadGenerator {
+        let mut length_model = LengthModel::new();
+        let mut quality_model = QualityModel::new(None, None, None);
+        length_model.add_value(length);
+        quality_model.add_value(length, vec![b'~'; length], &mut StdRng::seed_from_u64(1));
+        ReadGenerator::new(
+            vec![FastaRecord {
+                id: "chr1".to_string(),
+                sequence: sequence.to_vec(),
+            }],
+            length_model,
+            quality_model,
+            ErrorModel::new(None, None, None, None, None).unwrap(),
+            Some(7),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn test_origin_matches_sequence_on_both_strands() {
+        let reference = b"AACCGTTAGCATGCATTTGACCAGTAGGCATCAGGTACCGATCGATGCA";
+        let mut generator = error_free_generator(reference, 12);
+        let (mut forward, mut reverse) = (0, 0);
+
+        for _ in 0..200 {
+            let read = generator.generate_read().unwrap();
+            let origin = std::str::from_utf8(read.description()).unwrap();
+            let (range, strand) = origin
+                .strip_prefix("XO:Z:chr1:")
+                .unwrap()
+                .split_once(':')
+                .unwrap();
+            let (start, end) = range.split_once('-').unwrap();
+            let (start, end): (usize, usize) = (start.parse().unwrap(), end.parse().unwrap());
+
+            let mut expected = reference[start - 1..end].to_vec();
+            match strand {
+                "+" => forward += 1,
+                "-" => {
+                    reverse += 1;
+                    reverse_complement(&mut expected);
+                }
+                _ => panic!("bad strand in {origin}"),
+            }
+            assert_eq!(read.sequence(), expected.as_slice(), "origin {origin}");
+        }
+        assert!(
+            forward > 50 && reverse > 50,
+            "{forward} fwd / {reverse} rev"
+        );
+    }
+
+    #[test]
+    fn test_reference_normalized_to_uppercase_acgt() {
+        let mut generator = error_free_generator(b"acgtNNRYacgt", 12);
+        let read = generator.generate_read().unwrap();
+        assert!(read.sequence().iter().all(|b| b"ACGT".contains(b)));
     }
 }

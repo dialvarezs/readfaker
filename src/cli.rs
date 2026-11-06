@@ -69,6 +69,10 @@ pub struct Cli {
     #[arg(long, value_name = "RATE")]
     pub error_del_ext: Option<f64>,
 
+    /// Don't write each read's origin (contig:start-end:strand) as the XO tag
+    #[arg(long)]
+    pub no_origin: bool,
+
     /// Enable verbose output
     #[arg(short, long)]
     pub verbose: bool,

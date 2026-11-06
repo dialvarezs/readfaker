@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use readfaker::cli::{Cli, fmt};
-use readfaker::generator::ReadGenerator;
+use readfaker::generator::{ORIGIN_TAG, ReadGenerator};
 use readfaker::io::{BamWriter, CompressionLevel, FastaReader, FastqWriter};
 use readfaker::models::ErrorModel;
 use readfaker::utils::load_models;
@@ -87,12 +87,18 @@ fn main() -> Result<()> {
     let compression_level = CompressionLevel::try_from(cli.compression_level)?;
     match output_ext.as_str() {
         "bam" => {
+            let origin_prefix = format!("{ORIGIN_TAG}:Z:");
             let mut writer =
                 BamWriter::new(&cli.output, cli.compression_threads, compression_level)?;
             for _ in 0..cli.num_reads {
                 let read = generator.generate_read()?;
                 let name = std::str::from_utf8(read.name()).expect("UUID should be valid UTF-8");
-                writer.write_record(name, read.sequence(), read.quality_scores())?;
+                let origin = read
+                    .description()
+                    .strip_prefix(origin_prefix.as_bytes())
+                    .filter(|_| !cli.no_origin)
+                    .map(|o| std::str::from_utf8(o).expect("origin should be valid UTF-8"));
+                writer.write_record(name, read.sequence(), read.quality_scores(), origin)?;
             }
             writer.finish()?;
         }
@@ -101,7 +107,10 @@ fn main() -> Result<()> {
             let mut writer =
                 FastqWriter::new(&cli.output, cli.compression_threads, compression_level)?;
             for _ in 0..cli.num_reads {
-                let read = generator.generate_read()?;
+                let mut read = generator.generate_read()?;
+                if cli.no_origin {
+                    read.description_mut().clear();
+                }
                 writer.write_record(&read)?;
             }
             writer.finish()?;

@@ -56,6 +56,7 @@ readfaker -r <reference> -i <input> -o <output> -n <num_reads>
 - `--error-del <RATE>` - Error deletion rate (default: 0.2)
 - `--error-ins-ext <RATE>` - Insertion extension probability using geometric distribution (default: 0.4)
 - `--error-del-ext <RATE>` - Deletion extension probability using geometric distribution (default: 0.4)
+- `--no-origin` - Don't write each read's origin (see [Read origin](#read-origin))
 - `-v, --verbose` - Enable verbose output
 
 ### Examples
@@ -81,6 +82,19 @@ readfaker -r genome.fasta -i real_reads.fastq.gz -o simulated_reads.fastq.gz -n 
 3. **Read Generation**: Samples read lengths, selects random reference positions, applies quality profiles, and
    introduces errors based on quality scores with configurable error rates and indel extension probabilities
 4. **Output**: Writes FASTQ or BAM records with automatic multi-threaded BGZF compression for `.gz`, `.bgz`, `.bgzf`, or `.bam` files
+
+## Read origin
+
+Each read records where it was sampled from as an `XO:Z:<contig>:<start>-<end>:<strand>` tag (1-based, inclusive reference coordinates; strand `+` or `-`).
+In FASTQ output it is the header comment; in BAM output it is an aux tag.
+Use `--no-origin` to omit it, e.g. for blind tests where reads must not be told apart from real ones.
+
+```
+@5272f39c-f9a9-4f93-9cce-849905073826 XO:Z:chr1:3686-4184:-
+```
+
+Reads are sampled from both strands with equal probability.
+Soft-masked (lowercase) reference bases are uppercased, and non-ACGT bases (N, IUPAC codes) are replaced by a random base.
 
 ## Building from Source
 
