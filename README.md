@@ -58,6 +58,7 @@ readfaker -r <reference> -i <input> -o <output> -n <num_reads>
 - `--error-ins-ext <RATE>` - Insertion extension probability using geometric distribution (default: 0.27)
 - `--error-del-ext <RATE>` - Deletion extension probability using geometric distribution (default: 0.3)
 - `--circular` - Treat all reference sequences as circular, so reads can span the end and start of a contig (e.g. bacterial chromosomes and plasmids)
+- `--chimera-rate <RATE>` - Fraction of reads that are chimeras, joining two fragments from unrelated positions (default: 0, see [Chimeric reads](#chimeric-reads))
 - `--no-origin` - Don't write each read's origin (see [Read origin](#read-origin))
 - `-v, --verbose` - Enable verbose output
 
@@ -105,6 +106,19 @@ Use `--no-origin` to omit it, e.g. for blind tests where reads must not be told 
 ```
 
 Reads are sampled from both strands with equal probability.
+
+## Chimeric reads
+
+With `--chimera-rate`, that fraction of reads joins two fragments taken from unrelated positions, contigs and strands.
+The read length is split between both fragments, so read lengths still follow the input distribution.
+The origin lists both fragments separated by `;`:
+
+```
+@f03d282b-a558-4bab-b35e-958fe339e183 XO:Z:chr1:2167214-2168091:+;chr2:1874138-1875122:-
+```
+
+The rate depends on the library prep, so there is no default.
+In the data used for the [error model defaults](#error-model-defaults), about 3% of reads from a ligation library (HG002) and about 0.2% from a rapid barcoding library (bacterial isolates) were chimeras.
 Soft-masked (lowercase) reference bases are uppercased, and non-ACGT bases (N, IUPAC codes) are replaced by a random base.
 
 ## Building from Source

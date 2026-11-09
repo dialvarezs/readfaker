@@ -48,6 +48,7 @@ pub const ORIGIN_TAG: &str = "XO";
 ///     quality_model,
 ///     error_model,
 ///     false,
+///     0.0,
 ///     Some(42),
 /// ).unwrap();
 /// let read = generator.generate_read().unwrap();
@@ -61,6 +62,8 @@ pub struct ReadGenerator {
     error_model: ErrorModel,
     /// Reads may span the end and start of each reference sequence.
     circular: bool,
+    /// Fraction of reads built from two unrelated fragments.
+    chimera_rate: f64,
     rng: SmallRng,
 }
 
@@ -72,21 +75,26 @@ impl ReadGenerator {
     /// * `length_model` - Empirical model of read lengths
     /// * `quality_model` - Empirical model of quality scores by read length
     /// * `circular` - Treat all reference sequences as circular
+    /// * `chimera_rate` - Fraction of reads that join two fragments from unrelated positions
     /// * `seed` - Optional random seed for reproducibility (uses system entropy if None)
     ///
     /// # Returns
     /// A configured `ReadGenerator` ready to produce reads
     ///
     /// # Errors
-    /// Returns an error if `reference_sequences` is empty
+    /// Returns an error if `reference_sequences` is empty or `chimera_rate` is not between 0 and 1
     pub fn new(
         mut reference_sequences: Vec<FastaRecord>,
         length_model: LengthModel,
         quality_model: QualityModel,
         error_model: ErrorModel,
         circular: bool,
+        chimera_rate: f64,
         seed: Option<u64>,
     ) -> Result<Self> {
+        if !(0.0..=1.0).contains(&chimera_rate) {
+            bail!("Chimera rate must be between 0 and 1, got {chimera_rate}");
+        }
         if reference_sequences.is_empty() {
             bail!("Reference sequences cannot be empty");
         }
@@ -114,6 +122,7 @@ impl ReadGenerator {
             quality_model,
             error_model,
             circular,
+            chimera_rate,
             rng,
         })
     }
@@ -136,42 +145,30 @@ impl ReadGenerator {
                 .length_model
                 .sample(&mut self.rng)
                 .ok_or_else(|| anyhow!("Length model is empty"))?;
-            let reference_sequence =
-                &self.reference_sequences[self.reference_weights.sample(&mut self.rng)];
+            // A chimeric read splits its length between two fragments, so read lengths still
+            // follow the length model.
+            let chimeric =
+                self.chimera_rate > 0.0 && length > 1 && self.rng.random_bool(self.chimera_rate);
+            let first_length = if chimeric {
+                self.rng.random_range(1..length)
+            } else {
+                length
+            };
 
-            // Skip if sampled length is longer than reference sequence
-            if length > reference_sequence.sequence.len() {
+            // Skip if a fragment is longer than its reference sequence
+            let Some((mut sequence, mut origin)) = self.sample_fragment(first_length) else {
                 continue;
-            }
-
-            let contig = &reference_sequence.sequence;
-            let max_start = if self.circular {
-                contig.len() - 1
-            } else {
-                contig.len() - length
             };
-            let start_position = self.rng.random_range(0..=max_start);
-            let end_position = start_position + length;
-            let mut sequence = if end_position <= contig.len() {
-                contig[start_position..end_position].to_vec()
-            } else {
-                [
-                    &contig[start_position..],
-                    &contig[..end_position - contig.len()],
-                ]
-                .concat()
-            };
-            let reverse = self.rng.random_bool(0.5);
-            if reverse {
-                reverse_complement(&mut sequence);
+            if chimeric {
+                let Some((fragment, fragment_origin)) = self.sample_fragment(length - first_length)
+                else {
+                    continue;
+                };
+                sequence.extend(fragment);
+                origin.push(';');
+                origin.push_str(&fragment_origin);
             }
-            let origin = format!(
-                "{ORIGIN_TAG}:Z:{}:{}-{}:{}",
-                reference_sequence.id,
-                start_position + 1,
-                (end_position - 1) % contig.len() + 1,
-                if reverse { '-' } else { '+' }
-            );
+            let origin = format!("{ORIGIN_TAG}:Z:{origin}");
 
             let Some(qualities) = self.quality_model.sample(length, &mut self.rng) else {
                 continue; // Skip if no quality string available
@@ -192,6 +189,52 @@ impl ReadGenerator {
             "Failed to generate a read after {} attempts: sampled read lengths may exceed all reference sequences",
             MAX_ATTEMPTS
         )
+    }
+
+    /// Extracts a fragment from a random position and strand of a random reference sequence.
+    ///
+    /// # Arguments
+    /// * `length` - Length of the fragment
+    ///
+    /// # Returns
+    /// * `Some((sequence, origin))` - Fragment and its origin as `<contig>:<start>-<end>:<strand>`
+    /// * `None` - If the chosen reference sequence is shorter than `length`
+    fn sample_fragment(&mut self, length: usize) -> Option<(Vec<u8>, String)> {
+        let reference_sequence =
+            &self.reference_sequences[self.reference_weights.sample(&mut self.rng)];
+        let contig = &reference_sequence.sequence;
+        if length > contig.len() {
+            return None;
+        }
+
+        let max_start = if self.circular {
+            contig.len() - 1
+        } else {
+            contig.len() - length
+        };
+        let start_position = self.rng.random_range(0..=max_start);
+        let end_position = start_position + length;
+        let mut sequence = if end_position <= contig.len() {
+            contig[start_position..end_position].to_vec()
+        } else {
+            [
+                &contig[start_position..],
+                &contig[..end_position - contig.len()],
+            ]
+            .concat()
+        };
+        let reverse = self.rng.random_bool(0.5);
+        if reverse {
+            reverse_complement(&mut sequence);
+        }
+        let origin = format!(
+            "{}:{}-{}:{}",
+            reference_sequence.id,
+            start_position + 1,
+            (end_position - 1) % contig.len() + 1,
+            if reverse { '-' } else { '+' }
+        );
+        Some((sequence, origin))
     }
 
     /// Applies homopolymer length errors on top of the per-base errors.
@@ -447,6 +490,7 @@ mod tests {
             quality_model,
             error_model,
             false,
+            0.0,
             Some(42),
         )
     }
@@ -536,7 +580,12 @@ mod tests {
     }
 
     /// Generator whose quality strings are all Q93, so reads are effectively error-free.
-    fn error_free_generator(sequence: &[u8], length: usize, circular: bool) -> ReadGenerator {
+    fn error_free_generator(
+        sequence: &[u8],
+        length: usize,
+        circular: bool,
+        chimera_rate: f64,
+    ) -> ReadGenerator {
         let mut length_model = LengthModel::new();
         let mut quality_model = QualityModel::new(None, None, None);
         length_model.add_value(length);
@@ -550,6 +599,7 @@ mod tests {
             quality_model,
             ErrorModel::new(None, None, None, None, None).unwrap(),
             circular,
+            chimera_rate,
             Some(7),
         )
         .unwrap()
@@ -558,7 +608,7 @@ mod tests {
     #[test]
     fn test_origin_matches_sequence_on_both_strands() {
         let reference = b"AACCGTTAGCATGCATTTGACCAGTAGGCATCAGGTACCGATCGATGCA";
-        let mut generator = error_free_generator(reference, 12, false);
+        let mut generator = error_free_generator(reference, 12, false, 0.0);
         let (mut forward, mut reverse) = (0, 0);
 
         for _ in 0..200 {
@@ -592,7 +642,7 @@ mod tests {
     #[test]
     fn test_circular_reads_span_contig_end() {
         let reference = b"AACCGTTAGCATGCATTTGA";
-        let mut generator = error_free_generator(reference, 12, true);
+        let mut generator = error_free_generator(reference, 12, true, 0.0);
         let mut wrapped = 0;
 
         for _ in 0..300 {
@@ -619,6 +669,57 @@ mod tests {
         }
         // 11 of 20 start positions wrap around
         assert!(wrapped > 100, "{wrapped} reads wrapped");
+    }
+
+    #[test]
+    fn test_chimeric_reads_join_two_fragments() {
+        let reference = b"AACCGTTAGCATGCATTTGACCAGTAGGCATCAGGTACCGATCGATGCA";
+        let mut generator = error_free_generator(reference, 12, false, 0.5);
+        let mut chimeras = 0;
+
+        for _ in 0..200 {
+            let read = generator.generate_read().unwrap();
+            let origin = std::str::from_utf8(read.description()).unwrap();
+            let segments: Vec<&str> = origin.strip_prefix("XO:Z:").unwrap().split(';').collect();
+            assert!(segments.len() <= 2, "origin {origin}");
+            chimeras += usize::from(segments.len() == 2);
+
+            let mut expected = Vec::new();
+            for segment in segments {
+                let (range, strand) = segment
+                    .strip_prefix("chr1:")
+                    .unwrap()
+                    .split_once(':')
+                    .unwrap();
+                let (start, end) = range.split_once('-').unwrap();
+                let (start, end): (usize, usize) = (start.parse().unwrap(), end.parse().unwrap());
+                let mut fragment = reference[start - 1..end].to_vec();
+                if strand == "-" {
+                    reverse_complement(&mut fragment);
+                }
+                expected.extend(fragment);
+            }
+            assert_eq!(read.sequence().len(), 12, "origin {origin}");
+            assert_eq!(read.sequence(), expected.as_slice(), "origin {origin}");
+        }
+        assert!((70..130).contains(&chimeras), "{chimeras} chimeras");
+    }
+
+    #[test]
+    fn test_invalid_chimera_rate() {
+        let result = ReadGenerator::new(
+            vec![FastaRecord {
+                id: "chr1".to_string(),
+                sequence: b"ACGT".to_vec(),
+            }],
+            LengthModel::new(),
+            QualityModel::new(None, None, None),
+            ErrorModel::new(None, None, None, None, None).unwrap(),
+            false,
+            1.5,
+            None,
+        );
+        assert!(result.is_err());
     }
 
     #[test]
@@ -677,7 +778,7 @@ mod tests {
 
     #[test]
     fn test_reference_normalized_to_uppercase_acgt() {
-        let mut generator = error_free_generator(b"acgtNNRYacgt", 12, false);
+        let mut generator = error_free_generator(b"acgtNNRYacgt", 12, false, 0.0);
         let read = generator.generate_read().unwrap();
         assert!(read.sequence().iter().all(|b| b"ACGT".contains(b)));
     }

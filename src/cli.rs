@@ -73,6 +73,10 @@ pub struct Cli {
     #[arg(long)]
     pub circular: bool,
 
+    /// Fraction of reads that are chimeras, joining two fragments from unrelated positions
+    #[arg(long, value_name = "RATE", default_value_t = 0.0)]
+    pub chimera_rate: f64,
+
     /// Don't write each read's origin (contig:start-end:strand) as the XO tag
     #[arg(long)]
     pub no_origin: bool,

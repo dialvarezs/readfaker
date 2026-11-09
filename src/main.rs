@@ -67,6 +67,7 @@ fn main() -> Result<()> {
         quality_model,
         error_model,
         cli.circular,
+        cli.chimera_rate,
         cli.seed,
     )?;
 
