@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo.svg" alt="ReadFaker logo: four stacked reads, one drawn with a dashed outline" width="140"></p>
+
 # ReadFaker
 
 A simple and fast Oxford Nanopore sequencing reads with realistic quality profiles by extracting empirical models from real sequencing data.
