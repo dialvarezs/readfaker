@@ -23,7 +23,7 @@ This is particularly useful for artificially contaminating real data for testing
 
 ## Installation
 
-Go to the [Releases](https://github.com/dialvarezs/readfaker/releases) and download the latest binary for Linux or Windows.
+Go to the [Releases](https://github.com/dialvarezs/readfaker/releases) and download the latest binary for Linux, Windows or macOS.
 For other platforms, see [Building from Source](#building-from-source).
 
 ## Usage
