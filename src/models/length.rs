@@ -1,11 +1,14 @@
-use rand::Rng;
+use rand::{Rng, RngExt};
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
 /// Empirical model of read lengths built from observed sequencing data.
 #[derive(Default)]
 pub struct LengthModel {
     length_histogram: BTreeMap<usize, usize>,
     total_count: usize,
+    /// (cumulative count, length) pairs built on first sample, for O(log n) lookups.
+    cumulative: OnceLock<Vec<(usize, usize)>>,
 }
 
 impl LengthModel {
@@ -19,11 +22,9 @@ impl LengthModel {
     /// # Arguments
     /// * `length` - Read length to add
     pub fn add_value(&mut self, length: usize) {
-        self.length_histogram
-            .entry(length)
-            .and_modify(|c| *c += 1)
-            .or_insert(1);
+        *self.length_histogram.entry(length).or_default() += 1;
         self.total_count += 1;
+        self.cumulative.take();
     }
 
     /// Samples a random length from the empirical model.
@@ -38,17 +39,20 @@ impl LengthModel {
             return None;
         }
 
+        let cumulative = self.cumulative.get_or_init(|| {
+            let mut total = 0;
+            self.length_histogram
+                .iter()
+                .map(|(&length, &count)| {
+                    total += count;
+                    (total, length)
+                })
+                .collect()
+        });
+
         let target = rng.random_range(0..self.total_count);
-        let mut cumulative = 0;
-
-        for (&length, &count) in &self.length_histogram {
-            cumulative += count;
-            if cumulative > target {
-                return Some(length);
-            }
-        }
-
-        None
+        let idx = cumulative.partition_point(|&(total, _)| total <= target);
+        Some(cumulative[idx].1)
     }
 }
 
@@ -90,5 +94,18 @@ mod tests {
 
         // Should produce identical sequences
         assert_eq!(samples1, samples2);
+    }
+
+    #[test]
+    fn test_add_after_sample_updates_distribution() {
+        let mut model = LengthModel::new();
+        model.add_value(100);
+        let mut rng = StdRng::seed_from_u64(42);
+        assert_eq!(model.sample(&mut rng), Some(100));
+
+        for _ in 0..1000 {
+            model.add_value(200);
+        }
+        assert!((0..100).any(|_| model.sample(&mut rng) == Some(200)));
     }
 }

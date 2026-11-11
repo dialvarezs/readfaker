@@ -1,8 +1,8 @@
 use anyhow::Result;
 use clap::Parser;
 use readfaker::cli::{Cli, fmt};
-use readfaker::generator::ReadGenerator;
-use readfaker::io::{BamWriter, FastaReader, FastqWriter};
+use readfaker::generator::{ORIGIN_TAG, ReadGenerator};
+use readfaker::io::{BamWriter, CompressionLevel, FastaReader, FastqWriter};
 use readfaker::models::ErrorModel;
 use readfaker::utils::load_models;
 
@@ -35,9 +35,6 @@ fn main() -> Result<()> {
             eprintln!("{}: {}", fmt::param_aligned("Random seed", 16), seed);
         }
         eprintln!();
-    }
-
-    if cli.verbose {
         eprintln!("{}", fmt::progress("Creating models from input FASTQ..."));
     }
     let (length_model, quality_model) = load_models(&cli.input, cli.seed)?;
@@ -52,31 +49,15 @@ fn main() -> Result<()> {
 
     if cli.verbose {
         eprintln!("Error Model Configuration:");
-        eprintln!(
-            "{}: {:.2}",
-            fmt::param_aligned("Substitution rate", 20),
-            error_model.substitution_rate
-        );
-        eprintln!(
-            "{}: {:.2}",
-            fmt::param_aligned("Insertion rate", 20),
-            error_model.insertion_rate
-        );
-        eprintln!(
-            "{}: {:.2}",
-            fmt::param_aligned("Deletion rate", 20),
-            error_model.deletion_rate
-        );
-        eprintln!(
-            "{}: {:.2}",
-            fmt::param_aligned("Ins. extension rate", 20),
-            error_model.insertion_extension_rate
-        );
-        eprintln!(
-            "{}: {:.2}",
-            fmt::param_aligned("Del. extension rate", 20),
-            error_model.deletion_extension_rate
-        );
+        for (name, rate) in [
+            ("Substitution rate", error_model.substitution_rate),
+            ("Insertion rate", error_model.insertion_rate),
+            ("Deletion rate", error_model.deletion_rate),
+            ("Ins. extension rate", error_model.insertion_extension_rate),
+            ("Del. extension rate", error_model.deletion_extension_rate),
+        ] {
+            eprintln!("{}: {:.2}", fmt::param_aligned(name, 20), rate);
+        }
         eprintln!();
     }
 
@@ -85,6 +66,8 @@ fn main() -> Result<()> {
         length_model,
         quality_model,
         error_model,
+        cli.circular,
+        cli.chimera_rate,
         cli.seed,
     )?;
 
@@ -103,21 +86,33 @@ fn main() -> Result<()> {
         );
     }
 
-    match output_ext.to_lowercase().as_str() {
+    let compression_level = CompressionLevel::try_from(cli.compression_level)?;
+    match output_ext.as_str() {
         "bam" => {
-            let mut writer = BamWriter::new(&cli.output, cli.compression_threads)?;
+            let origin_prefix = format!("{ORIGIN_TAG}:Z:");
+            let mut writer =
+                BamWriter::new(&cli.output, cli.compression_threads, compression_level)?;
             for _ in 0..cli.num_reads {
                 let read = generator.generate_read()?;
                 let name = std::str::from_utf8(read.name()).expect("UUID should be valid UTF-8");
-                writer.write_record(name, read.sequence(), read.quality_scores())?;
+                let origin = read
+                    .description()
+                    .strip_prefix(origin_prefix.as_bytes())
+                    .filter(|_| !cli.no_origin)
+                    .map(|o| std::str::from_utf8(o).expect("origin should be valid UTF-8"));
+                writer.write_record(name, read.sequence(), read.quality_scores(), origin)?;
             }
             writer.finish()?;
         }
         _ => {
             // Default to FASTQ for all other extensions
-            let mut writer = FastqWriter::new(&cli.output, cli.compression_threads)?;
+            let mut writer =
+                FastqWriter::new(&cli.output, cli.compression_threads, compression_level)?;
             for _ in 0..cli.num_reads {
-                let read = generator.generate_read()?;
+                let mut read = generator.generate_read()?;
+                if cli.no_origin {
+                    read.description_mut().clear();
+                }
                 writer.write_record(&read)?;
             }
             writer.finish()?;

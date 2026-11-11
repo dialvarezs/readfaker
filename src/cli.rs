@@ -45,25 +45,41 @@ pub struct Cli {
     #[arg(long = "compression-threads", default_value = "4")]
     pub compression_threads: usize,
 
-    /// Error substitution rate (default: 0.7)
+    /// BGZF compression level for output, 0-12 (higher = smaller but slower)
+    #[arg(long = "compression-level", default_value = "2", value_parser = clap::value_parser!(u8).range(0..=12))]
+    pub compression_level: u8,
+
+    /// Fraction of errors that are substitutions (default: 0.55)
     #[arg(long, value_name = "RATE")]
     pub error_sub: Option<f64>,
 
-    /// Error insertion rate (default: 0.1)
+    /// Fraction of errors that are insertions (default: 0.18)
     #[arg(long, value_name = "RATE")]
     pub error_ins: Option<f64>,
 
-    /// Error deletion rate (default: 0.2)
+    /// Fraction of errors that are deletions (default: 0.27)
     #[arg(long, value_name = "RATE")]
     pub error_del: Option<f64>,
 
-    /// Error insertion extension rate (default: 0.4)
+    /// Probability of extending an insertion by one more base (default: 0.27)
     #[arg(long, value_name = "RATE")]
     pub error_ins_ext: Option<f64>,
 
-    /// Error deletion extension rate (default: 0.4)
+    /// Probability of extending a deletion by one more base (default: 0.3)
     #[arg(long, value_name = "RATE")]
     pub error_del_ext: Option<f64>,
+
+    /// Treat all reference sequences as circular, so reads can span the end and start of a contig
+    #[arg(long)]
+    pub circular: bool,
+
+    /// Fraction of reads that are chimeras, joining two fragments from unrelated positions
+    #[arg(long, value_name = "RATE", default_value_t = 0.0)]
+    pub chimera_rate: f64,
+
+    /// Don't write each read's origin (contig:start-end:strand) as the XO tag
+    #[arg(long)]
+    pub no_origin: bool,
 
     /// Enable verbose output
     #[arg(short, long)]
@@ -76,10 +92,6 @@ pub mod fmt {
 
     pub fn header(text: impl Display) -> String {
         style(text).bold().cyan().to_string()
-    }
-
-    pub fn param(text: impl Display) -> String {
-        style(text).bold().to_string()
     }
 
     /// Format a parameter with proper alignment (width must account for raw text length)

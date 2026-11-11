@@ -2,8 +2,6 @@
 
 use anyhow::{Context, Result, bail};
 use noodles::fasta;
-use std::fs::File;
-use std::io::BufReader;
 use std::path::Path;
 
 /// Represents a FASTA sequence with its ID and nucleotide sequence.
@@ -27,9 +25,7 @@ impl FastaReader {
     pub fn read(path: &Path) -> Result<Vec<FastaRecord>> {
         let mut records = Vec::new();
 
-        let file = File::open(path)
-            .with_context(|| format!("Failed to open FASTA file: {}", path.display()))?;
-        let mut reader = fasta::io::Reader::new(BufReader::new(file));
+        let mut reader = fasta::io::Reader::new(super::open_maybe_gz(path)?);
 
         for result in reader.records() {
             let record = result

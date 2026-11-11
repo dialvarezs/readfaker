@@ -7,20 +7,36 @@ on:
 jobs:
   release:
     name: release ${{ matrix.target }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
     strategy:
       fail-fast: false
       matrix:
-        target: [ x86_64-pc-windows-gnu, x86_64-unknown-linux-musl ]
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
     steps:
-      - uses: actions/checkout@v5
-      - name: Compile and release
-        uses: rust-build/rust-build.action@v1.4.5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v7
+      - name: Install musl toolchain
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        uses: taiki-e/setup-cross-toolchain-action@v1
         with:
-          RUSTTARGET: ${{ matrix.target }}
-          EXTRA_FILES: "README.md LICENSE"
-          TOOLCHAIN_VERSION: "1.90"
+          target: ${{ matrix.target }}
+          runner: none
+      - name: Compile and release
+        uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: readfaker
+          target: ${{ matrix.target }}
+          archive: $bin_$tag_$target
+          include: README.md,LICENSE
+          tar: none
+          zip: all
+          checksum: sha256
+          # manual runs only build, so the workflow can be tested without a release
+          dry-run: ${{ github.event_name != 'release' }}
