@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Improvements
+
+- Add `--abundance` to set the relative abundance of each reference sequence, e.g. to simulate metagenomes.
+
+### Fixes
+
+- Read names are drawn from the seeded RNG, so the same seed gives identical output.
+
 ## 0.3.0 - 2026-11-10
 
 ### Improvements

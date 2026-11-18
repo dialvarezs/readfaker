@@ -8,8 +8,8 @@ use rand::RngExt;
 use rand::distr::Distribution;
 use rand::distr::weighted::WeightedIndex;
 use rand::rngs::SmallRng;
+use std::collections::HashMap;
 use std::ops::Range;
-use uuid::Uuid;
 
 /// Maximum attempts to find a (length, reference, quality) combination before giving up.
 const MAX_ATTEMPTS: usize = 1000;
@@ -55,8 +55,9 @@ pub const ORIGIN_TAG: &str = "XO";
 /// ```
 pub struct ReadGenerator {
     reference_sequences: Vec<FastaRecord>,
-    /// Picks references proportionally to their length, so coverage is uniform across contigs.
-    reference_weights: WeightedIndex<usize>,
+    /// Picks references proportionally to their length (times their abundance, if given),
+    /// so coverage is uniform across contigs with the same abundance.
+    reference_weights: WeightedIndex<f64>,
     length_model: LengthModel,
     quality_model: QualityModel,
     error_model: ErrorModel,
@@ -100,7 +101,7 @@ impl ReadGenerator {
         }
 
         let reference_weights =
-            WeightedIndex::new(reference_sequences.iter().map(|r| r.sequence.len()))
+            WeightedIndex::new(reference_sequences.iter().map(|r| r.sequence.len() as f64))
                 .map_err(|e| anyhow!("Invalid reference sequences: {}", e))?;
         let mut rng = make_rng(seed);
 
@@ -125,6 +126,35 @@ impl ReadGenerator {
             chimera_rate,
             rng,
         })
+    }
+
+    /// Sets the relative abundance (sequencing depth) of each reference sequence.
+    ///
+    /// Sequences are then picked in proportion to their length times their abundance.
+    ///
+    /// # Errors
+    /// Returns an error if a reference sequence has no abundance, an abundance names an unknown
+    /// sequence, or all weights are zero
+    pub fn with_abundances(mut self, abundances: &HashMap<String, f64>) -> Result<Self> {
+        let weights = self
+            .reference_sequences
+            .iter()
+            .map(|r| {
+                abundances
+                    .get(&r.id)
+                    .map(|a| r.sequence.len() as f64 * a)
+                    .ok_or_else(|| anyhow!("No abundance given for reference sequence '{}'", r.id))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        if let Some(unknown) = abundances
+            .keys()
+            .find(|id| !self.reference_sequences.iter().any(|r| &r.id == *id))
+        {
+            bail!("Abundance given for unknown reference sequence '{unknown}'");
+        }
+        self.reference_weights =
+            WeightedIndex::new(weights).map_err(|e| anyhow!("Invalid abundances: {}", e))?;
+        Ok(self)
     }
 
     /// Generates a single synthetic read with realistic sequencing errors.
@@ -177,7 +207,10 @@ impl ReadGenerator {
             let (sequence, qualities) = self.apply_homopolymer_errors(sequence, qualities);
             let (final_sequence, final_qualities) = self.apply_errors(sequence, qualities);
 
-            let id = Uuid::new_v4().to_string();
+            // Drawn from the seeded RNG so read names are reproducible too
+            let id = uuid::Builder::from_random_bytes(self.rng.random())
+                .into_uuid()
+                .to_string();
             return Ok(fastq::Record::new(
                 fastq::record::Definition::new(id, origin),
                 final_sequence,
@@ -519,7 +552,7 @@ mod tests {
             // Verify the ID is a valid UUID
             let name_str = std::str::from_utf8(read.name()).unwrap();
             assert!(
-                Uuid::parse_str(name_str).is_ok(),
+                uuid::Uuid::parse_str(name_str).is_ok(),
                 "Expected valid UUID, got: {}",
                 name_str
             );
@@ -577,6 +610,69 @@ mod tests {
             "got {} reads from short contig",
             from_short
         );
+    }
+
+    #[test]
+    fn test_reference_choice_weighted_by_abundance() {
+        let a = FastaRecord {
+            id: "a".to_string(),
+            sequence: vec![b'A'; 500],
+        };
+        let b = FastaRecord {
+            id: "b".to_string(),
+            sequence: vec![b'C'; 500],
+        };
+        let abundances = HashMap::from([("a".to_string(), 9.0), ("b".to_string(), 1.0)]);
+        let mut generator = create_test_generator(Some(vec![a, b]))
+            .unwrap()
+            .with_abundances(&abundances)
+            .unwrap();
+
+        let from_b = (0..1000)
+            .filter(|_| {
+                generator
+                    .generate_read()
+                    .unwrap()
+                    .description()
+                    .starts_with(b"XO:Z:b:")
+            })
+            .count();
+        // Expected ~10% (equal lengths, 1/(9+1) abundance)
+        assert!((50..150).contains(&from_b), "got {} reads from b", from_b);
+    }
+
+    #[test]
+    fn test_abundances_must_match_references() {
+        let missing = HashMap::from([("other".to_string(), 1.0)]);
+        assert!(
+            create_test_generator(None)
+                .unwrap()
+                .with_abundances(&missing)
+                .is_err()
+        );
+        let extra = HashMap::from([("seq1".to_string(), 1.0), ("other".to_string(), 1.0)]);
+        assert!(
+            create_test_generator(None)
+                .unwrap()
+                .with_abundances(&extra)
+                .is_err()
+        );
+        let zero = HashMap::from([("seq1".to_string(), 0.0)]);
+        assert!(
+            create_test_generator(None)
+                .unwrap()
+                .with_abundances(&zero)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn test_same_seed_gives_same_reads() {
+        let mut a = create_test_generator(None).unwrap();
+        let mut b = create_test_generator(None).unwrap();
+        for _ in 0..10 {
+            assert_eq!(a.generate_read().unwrap(), b.generate_read().unwrap());
+        }
     }
 
     /// Generator whose quality strings are all Q93, so reads are effectively error-free.

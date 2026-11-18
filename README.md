@@ -43,7 +43,8 @@ readfaker -r <reference> -i <input> -o <output> -n <num_reads>
 ### Optional Arguments
 
 - `-n, --num-reads <N>` - Number of reads to generate (default: 100000)
-- `-s, --seed <N>` - Random seed for reproducibility
+- `-a, --abundance <TSV>` - Relative abundance of each reference sequence (see [Abundance](#abundance))
+- `-s, --seed <N>` - Random seed for reproducibility (read names included)
 - `--compression-threads <N>` - Number of compression threads for output (default: 4, use 0 to detect them automatically)
 - `--compression-level <N>` - BGZF compression level for output, 0-12 (default: 2)
 - `--error-sub <RATE>` - Fraction of errors that are substitutions (default: 0.55)
@@ -86,6 +87,22 @@ readfaker -r genome.fasta -i real_reads.fastq.gz -o simulated_reads.fastq.gz -n 
 ## Error Model Defaults
 
 Default error rates and the homopolymer model were measured on R10.4.1 reads (dorado v2.1 fast, hac and sup) from bacterial isolates aligned to their own assemblies, and HG002 aligned to its Q100 assembly.
+
+## Abundance
+
+By default, reads are spread over the reference sequences in proportion to their length, so all of them get the same coverage.
+With `--abundance`, each sequence gets a relative abundance (sequencing depth), and is picked in proportion to its length times its abundance.
+This is useful to simulate a metagenome from several genomes.
+The file has two tab-separated columns, the sequence id (as in the FASTA header, up to the first space) and its abundance.
+Every reference sequence must be listed, and an abundance of 0 leaves a sequence out.
+Lines starting with `#` are ignored.
+
+```
+# genome A at 10x the depth of genome B; A's plasmid follows its chromosome
+genomeA_chr	10
+genomeA_plasmid	10
+genomeB_chr	1
+```
 
 ## Read Origin
 

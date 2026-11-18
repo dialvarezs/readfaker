@@ -37,6 +37,11 @@ pub struct Cli {
     #[arg(short = 'n', long, default_value = "100000")]
     pub num_reads: usize,
 
+    /// Relative abundance of each reference sequence (TSV: sequence id, abundance).
+    /// Sequences are picked in proportion to length times abundance
+    #[arg(short = 'a', long, value_name = "TSV")]
+    pub abundance: Option<PathBuf>,
+
     /// Random seed for reproducibility
     #[arg(short = 's', long)]
     pub seed: Option<u64>,

@@ -4,7 +4,7 @@ use readfaker::cli::{Cli, fmt};
 use readfaker::generator::{ORIGIN_TAG, ReadGenerator};
 use readfaker::io::{BamWriter, CompressionLevel, FastaReader, FastqWriter};
 use readfaker::models::ErrorModel;
-use readfaker::utils::load_models;
+use readfaker::utils::{load_abundances, load_models};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -31,6 +31,13 @@ fn main() -> Result<()> {
             fmt::param_aligned("Number of reads", 16),
             cli.num_reads
         );
+        if let Some(abundance) = &cli.abundance {
+            eprintln!(
+                "{}: {}",
+                fmt::param_aligned("Abundance", 16),
+                abundance.display()
+            );
+        }
         if let Some(seed) = cli.seed {
             eprintln!("{}: {}", fmt::param_aligned("Random seed", 16), seed);
         }
@@ -70,6 +77,9 @@ fn main() -> Result<()> {
         cli.chimera_rate,
         cli.seed,
     )?;
+    if let Some(path) = &cli.abundance {
+        generator = generator.with_abundances(&load_abundances(path)?)?;
+    }
 
     // Detect output format based on extension
     let output_ext = cli
