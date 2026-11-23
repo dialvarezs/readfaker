@@ -26,6 +26,7 @@ This is particularly useful for artificially contaminating real data for testing
 ## Installation
 
 ReadFaker is available on Bioconda:
+
 ```
 conda install -c conda-forge -c bioconda readfaker
 ```
@@ -141,6 +142,23 @@ Default error rates and the homopolymer model were measured on R10.4.1 reads (do
 - Quality scores are taken at face value, so simulated reads are only as accurate as the basecaller's quality scores. In some datasets, reads had between 11% fewer and 12% more errors than their quality scores predict. On older models this can be worse.
 - Homopolymer errors depend on the base (G/C runs have about twice the errors of A/T runs) and vary between datasets at the same read quality, but the model only uses run length and read quality.
 - Junk reads, adapters and barcodes are not simulated.
+
+## Comparison with Other Simulators
+
+ReadFaker needs no training step, reproduces homopolymer errors more closely than other simulators, and is much faster.
+
+|                        | ReadFaker 0.4.0 | Badread 0.4.2 | NanoSim 3.2.3 | PBSIM3 3.0.5 (sample) |
+|------------------------|-----------------|---------------|---------------|-----------------------|
+| Training needed        | No              | Yes (33 min)  | Yes (5 min)   | No                    |
+| Homopolymer error      | **0.018**       | 0.045         | 0.103         | 0.095                 |
+| Read identity error    | **0.001**       | 0.005         | 0.003         | 0.007                 |
+| Time per Gb (1 thread) | **3 s**         | 44 min        | 4 min         | 3 min                 |
+| Peak memory            | 96 MB           | 417 MB        | 4.2 GB        | **33 MB**             |
+
+- Homopolymer error: mean absolute difference from real reads in the fraction of homopolymer runs with a wrong length, over run lengths 3 to 9.
+- Read identity error: absolute difference from real reads in mean read identity.
+
+Accuracy was measured on R10.4.1 reads of the ZymoBIOMICS mock community (dorado fast, hac and sup), which were not used to set ReadFaker's defaults. Badread and NanoSim were trained on the same reads they were compared against. Time and memory are from a single run generating 1 Gb of human reads.
 
 ## Building from Source
 
