@@ -57,7 +57,7 @@ readfaker -r <reference> -i <input> -o <output> -n <num_reads>
 - `--no-origin` - Don't write each read's origin (see [Read Origin](#read-origin))
 - `-v, --verbose` - Enable verbose output
 
-The three `--error-sub`, `--error-ins` and `--error-del` values set the mix of error types, not how many errors there are, and must add up to 1 or less.
+The three `--error-sub`, `--error-ins` and `--error-del` values set the mix of error types, not how many errors there are, and must add up to 1.
 How many errors a read gets depends on its quality scores.
 
 ### Examples

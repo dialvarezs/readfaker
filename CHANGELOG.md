@@ -11,6 +11,10 @@
 - Read names are drawn from the seeded RNG, so the same seed gives identical output.
 - The number of wrong bases now matches the quality scores. Previously, indel counted as one, so wrong bases were higher than expected.
 
+### Changes
+
+- `--error-sub`, `--error-ins` and `--error-del` must now add up to 1. Before, a lower sum was accepted and left some errors unapplied.
+
 ## 0.3.0 - 2026-11-10
 
 ### Improvements

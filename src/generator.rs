@@ -355,15 +355,11 @@ impl ReadGenerator {
         let mut i = 0;
         while i < sequence.len() {
             let quality_ascii = qualities[i];
-            let alteration = if self.rng.random::<u32>() <= thresholds[usize::from(quality_ascii)] {
-                self.error_model.get_alteration_type(&mut self.rng)
-            } else {
-                None
-            };
-            let Some(alteration) = alteration else {
+            if self.rng.random::<u32>() > thresholds[usize::from(quality_ascii)] {
                 i += 1;
                 continue;
-            };
+            }
+            let alteration = self.error_model.get_alteration_type(&mut self.rng);
 
             new_sequence.extend_from_slice(&sequence[run_start..i]);
             new_quality.extend_from_slice(&qualities[run_start..i]);

@@ -39,9 +39,8 @@ pub enum AlterationType {
 ///
 /// # Rate Constraints
 /// - All rates must be in the range [0.0, 1.0]
-/// - The sum of substitution, insertion, and deletion rates must be ≤ 1.0
+/// - Substitution, insertion, and deletion rates must sum to 1.0
 /// - Extension rates define geometric distribution for indel lengths
-/// - If the sum < 1.0, some errors will result in no alteration
 #[derive(Debug)]
 pub struct ErrorModel {
     pub substitution_rate: f64,
@@ -67,7 +66,7 @@ impl ErrorModel {
     /// # Errors
     /// Returns an error if:
     /// - Any rate is outside [0.0, 1.0]
-    /// - The sum of error rates exceeds 1.0
+    /// - The error rates don't sum to 1.0
     ///
     /// # Example
     /// ```
@@ -78,7 +77,7 @@ impl ErrorModel {
     ///
     /// // Custom rates with longer indels
     /// let model = ErrorModel::new(
-    ///     Some(0.5), Some(0.3), Some(0.1),
+    ///     Some(0.5), Some(0.3), Some(0.2),
     ///     Some(0.25), Some(0.25)
     /// ).unwrap();
     /// ```
@@ -108,9 +107,9 @@ impl ErrorModel {
         }
 
         let sum = substitution + insertion + deletion;
-        if sum > 1.0 {
+        if (sum - 1.0).abs() > 1e-6 {
             bail!(
-                "Error rates must sum to at most 1.0 (got substitution={}, insertion={}, deletion={}, sum={})",
+                "Error rates must sum to 1.0 (got substitution={}, insertion={}, deletion={}, sum={})",
                 substitution,
                 insertion,
                 deletion,
@@ -198,28 +197,24 @@ impl ErrorModel {
     /// Randomly determines which type of error alteration to apply.
     ///
     /// Uses the model's rate probabilities to select between substitution, insertion,
-    /// and deletion. If the sum of rates is less than 1.0, this may return `None`,
-    /// indicating no alteration should be applied.
+    /// and deletion.
     ///
     /// # Arguments
     /// * `rng` - Random number generator for sampling
     ///
     /// # Returns
-    /// * `Some(AlterationType)` - The type of alteration to apply
-    /// * `None` - No alteration (when random value exceeds the sum of all rates)
-    pub fn get_alteration_type(&self, rng: &mut impl Rng) -> Option<AlterationType> {
+    /// The type of alteration to apply
+    pub fn get_alteration_type(&self, rng: &mut impl Rng) -> AlterationType {
         let r = rng.random_range(0.0..1.0);
 
         if r < self.substitution_rate {
-            Some(AlterationType::Substitution)
+            AlterationType::Substitution
         } else if r < self.substitution_rate + self.insertion_rate {
             let len = self.sample_length(rng, self.insertion_extension_rate);
-            Some(AlterationType::Insertion(len))
-        } else if r < self.substitution_rate + self.insertion_rate + self.deletion_rate {
-            let len = self.sample_length(rng, self.deletion_extension_rate);
-            Some(AlterationType::Deletion(len))
+            AlterationType::Insertion(len)
         } else {
-            None
+            let len = self.sample_length(rng, self.deletion_extension_rate);
+            AlterationType::Deletion(len)
         }
     }
 }
@@ -241,11 +236,12 @@ mod tests {
     }
 
     #[test]
-    fn test_sum_exceeds_one() {
-        let result = ErrorModel::new(Some(0.6), Some(0.3), Some(0.2), None, None);
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("must sum to at most 1.0"));
+    fn test_sum_must_be_one() {
+        for (sub, ins, del) in [(0.6, 0.3, 0.2), (0.5, 0.2, 0.2)] {
+            let result = ErrorModel::new(Some(sub), Some(ins), Some(del), None, None);
+            let err_msg = result.unwrap_err().to_string();
+            assert!(err_msg.contains("must sum to 1.0"));
+        }
     }
 
     #[test]
@@ -256,7 +252,7 @@ mod tests {
         // With 100% substitution rate, should always return Substitution
         for _ in 0..10 {
             let alteration = model.get_alteration_type(&mut rng);
-            assert!(matches!(alteration, Some(AlterationType::Substitution)));
+            assert!(matches!(alteration, AlterationType::Substitution));
         }
     }
 
@@ -269,7 +265,7 @@ mod tests {
         for _ in 0..10 {
             let alteration = model.get_alteration_type(&mut rng);
             match alteration {
-                Some(AlterationType::Insertion(count)) => {
+                AlterationType::Insertion(count) => {
                     assert!(count >= 1); // Default extension is 0.4, so length >= 1
                 }
                 _ => panic!("Expected Insertion, got {:?}", alteration),
@@ -286,7 +282,7 @@ mod tests {
         for _ in 0..10 {
             let alteration = model.get_alteration_type(&mut rng);
             match alteration {
-                Some(AlterationType::Deletion(count)) => {
+                AlterationType::Deletion(count) => {
                     assert!(count >= 1); // Default extension is 0.4, so length >= 1
                 }
                 _ => panic!("Expected Deletion, got {:?}", alteration),
@@ -302,15 +298,13 @@ mod tests {
         let mut substitution_count = 0;
         let mut insertion_count = 0;
         let mut deletion_count = 0;
-        let mut none_count = 0;
 
         // Sample many times to check distribution
         for _ in 0..1000 {
             match model.get_alteration_type(&mut rng) {
-                Some(AlterationType::Substitution) => substitution_count += 1,
-                Some(AlterationType::Insertion(_)) => insertion_count += 1,
-                Some(AlterationType::Deletion(_)) => deletion_count += 1,
-                None => none_count += 1,
+                AlterationType::Substitution => substitution_count += 1,
+                AlterationType::Insertion(_) => insertion_count += 1,
+                AlterationType::Deletion(_) => deletion_count += 1,
             }
         }
 
@@ -318,7 +312,6 @@ mod tests {
         assert!(substitution_count > 400); // Expect ~500
         assert!(insertion_count > 200); // Expect ~300
         assert!(deletion_count > 100); // Expect ~200
-        assert_eq!(none_count, 0); // Sum = 1.0, so no None
     }
 
     #[test]
@@ -332,8 +325,8 @@ mod tests {
 
         for _ in 0..1000 {
             match model.get_alteration_type(&mut rng) {
-                Some(AlterationType::Insertion(count)) => max_ins_len = max_ins_len.max(count),
-                Some(AlterationType::Deletion(count)) => max_del_len = max_del_len.max(count),
+                AlterationType::Insertion(count) => max_ins_len = max_ins_len.max(count),
+                AlterationType::Deletion(count) => max_del_len = max_del_len.max(count),
                 _ => {}
             }
         }
