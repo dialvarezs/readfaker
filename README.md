@@ -81,7 +81,7 @@ readfaker -r genome.fasta -i real_reads.fastq.gz -o simulated_reads.fastq.gz -n 
 1. Reads the input FASTQ or BAM file and stores its read lengths and quality strings.
 2. Loads the reference sequences. Soft-masked (lowercase) bases are uppercased, and non-ACGT bases (N, IUPAC codes) are replaced by a random base.
 3. For each read, samples a length, takes a fragment of that length from a random position and strand of the reference, and assigns it a real quality string of similar length.
-4. Adds errors. Each base has an error with the probability given by its quality score, and the error is a substitution, insertion or deletion according to the configured mix. Homopolymer runs (3+ identical bases) also get length errors, mostly shortening, which are more likely in longer runs and in lower-quality reads.
+4. Adds errors. The quality scores give the number of wrong bases expected in the read. Homopolymer runs (3+ identical bases) get length errors first, more likely in longer runs and in lower-quality reads. The remaining expected errors are spread over the other bases in proportion to their error probability, as substitutions, insertions or deletions according to the configured mix. Inside homopolymer runs only substitutions are added this way.
 5. Writes FASTQ or BAM records, with multi-threaded BGZF compression for `.gz`, `.bgz`, or `.bam` files.
 
 ## Error Model Defaults

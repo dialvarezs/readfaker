@@ -10,19 +10,33 @@ const INSERTION_EXTENSION_DEFAULT_RATE: f64 = 0.27;
 const DELETION_EXTENSION_DEFAULT_RATE: f64 = 0.3;
 const EXTENSION_LIMIT: usize = 100;
 
-/// Extra homopolymer length-error weight by run length (index = length, last entry for longer runs).
-/// A run of length L gets an extra length error with probability `1 - (1 - p)^w(L)`, where `p` is the
-/// read's mean per-base error probability. Weights are fitted so that, added to the per-base errors,
-/// homopolymer accuracy matches real R10.4.1 sup/hac reads from bacterial isolates (runs up to 9)
-/// and HG002 against its Q100 assembly (runs up to 12+); geometric mean across datasets and tiers.
-const HOMOPOLYMER_WEIGHTS: [f64; 13] = [
-    0.0, 0.0, 0.0, 0.4, 1.2, 2.2, 3.7, 5.2, 13.0, 35.0, 50.0, 100.0, 270.0,
+/// Homopolymer length-error model: `(a, b)` by run length (index = length, last entry for longer
+/// runs). A run has a length error with probability `1 - exp(-a * p^b)`, where `p` is the read's
+/// mean per-base error probability. `b` falls with run length because errors in long runs depend
+/// little on read quality. Runs shorter than 3 are left to the per-base model.
+///
+/// Fitted on R10.4.1 reads (dorado fast/hac/sup) from bacterial isolates and HG002.
+const HOMOPOLYMER_MODEL: [(f64, f64); 13] = [
+    (0.0, 1.0),
+    (0.0, 1.0),
+    (0.0, 1.0),
+    (1.12, 0.93),
+    (1.58, 0.87),
+    (1.76, 0.80),
+    (2.06, 0.73),
+    (2.04, 0.66),
+    (2.13, 0.53),
+    (2.48, 0.42),
+    (2.28, 0.32),
+    (1.94, 0.19),
+    (1.89, 0.058),
 ];
-/// Fraction of homopolymer length errors that shorten the run (the rest lengthen it).
-const HOMOPOLYMER_SHORTEN_RATE: f64 = 0.75;
-/// Long runs are lengthened more often than short ones.
-const LONG_HOMOPOLYMER_SHORTEN_RATE: f64 = 0.65;
-const LONG_HOMOPOLYMER_LENGTH: usize = 8;
+/// Fraction of homopolymer length errors that shorten the run (the rest lengthen it), by run length
+/// (index = length, last entry for longer runs).
+const HOMOPOLYMER_SHORTEN_RATES: [f64; 7] = [0.0, 0.0, 0.0, 0.50, 0.60, 0.65, 0.70];
+/// Probability of shortening or lengthening a run by one more base.
+const HOMOPOLYMER_SHORTEN_EXTENSION_RATE: f64 = 0.2;
+const HOMOPOLYMER_LENGTHEN_EXTENSION_RATE: f64 = 0.25;
 
 /// Type of sequencing error alteration applied to a nucleotide position.
 #[derive(Debug)]
@@ -148,16 +162,13 @@ impl ErrorModel {
     /// * `length` - Length of the homopolymer run
     pub fn mean_homopolymer_error_bases(&self, length: usize) -> f64 {
         let shorten_rate = Self::shorten_rate(length);
-        shorten_rate * Self::mean_length(self.deletion_extension_rate).min((length - 1) as f64)
-            + (1.0 - shorten_rate) * Self::mean_length(self.insertion_extension_rate)
+        shorten_rate
+            * Self::mean_length(HOMOPOLYMER_SHORTEN_EXTENSION_RATE).min((length - 1) as f64)
+            + (1.0 - shorten_rate) * Self::mean_length(HOMOPOLYMER_LENGTHEN_EXTENSION_RATE)
     }
 
     fn shorten_rate(length: usize) -> f64 {
-        if length >= LONG_HOMOPOLYMER_LENGTH {
-            LONG_HOMOPOLYMER_SHORTEN_RATE
-        } else {
-            HOMOPOLYMER_SHORTEN_RATE
-        }
+        HOMOPOLYMER_SHORTEN_RATES[length.min(HOMOPOLYMER_SHORTEN_RATES.len() - 1)]
     }
 
     /// Sample length from geometric distribution based on extension rate
@@ -184,14 +195,14 @@ impl ErrorModel {
     pub fn homopolymer_error_probabilities(
         &self,
         error_probability: f64,
-    ) -> [f64; HOMOPOLYMER_WEIGHTS.len()] {
-        HOMOPOLYMER_WEIGHTS.map(|weight| 1.0 - (1.0 - error_probability).powf(weight))
+    ) -> [f64; HOMOPOLYMER_MODEL.len()] {
+        HOMOPOLYMER_MODEL.map(|(a, b)| 1.0 - (-a * error_probability.powf(b)).exp())
     }
 
     /// Samples a length change for a homopolymer run that has an error.
     ///
-    /// Short runs are mostly shortened, long runs (8+) nearly as often lengthened. The size of the
-    /// change follows the same geometric distributions as regular indels.
+    /// Runs of 3 are as often shortened as lengthened; longer runs are mostly shortened. The size of
+    /// the change follows a geometric distribution, with lower extension rates than regular indels.
     ///
     /// # Arguments
     /// * `length` - Length of the homopolymer run
@@ -201,9 +212,9 @@ impl ErrorModel {
     /// Signed change in run length: negative shortens the run, positive lengthens it
     pub fn get_homopolymer_alteration(&self, length: usize, rng: &mut impl Rng) -> isize {
         if rng.random_bool(Self::shorten_rate(length)) {
-            -(self.sample_length(rng, self.deletion_extension_rate) as isize)
+            -(self.sample_length(rng, HOMOPOLYMER_SHORTEN_EXTENSION_RATE) as isize)
         } else {
-            self.sample_length(rng, self.insertion_extension_rate) as isize
+            self.sample_length(rng, HOMOPOLYMER_LENGTHEN_EXTENSION_RATE) as isize
         }
     }
 
@@ -355,7 +366,9 @@ mod tests {
         assert_eq!(probabilities[..3], [0.0; 3]);
         assert!(probabilities[3..].windows(2).all(|w| w[0] < w[1]));
         assert!(probabilities.iter().all(|&p| (0.0..=1.0).contains(&p)));
-        assert_eq!(model.homopolymer_error_probabilities(1.0)[3], 1.0);
+        // Long runs depend less on read quality than short ones
+        let low = model.homopolymer_error_probabilities(0.1);
+        assert!(low[3] / probabilities[3] > low[9] / probabilities[9]);
     }
 
     #[test]

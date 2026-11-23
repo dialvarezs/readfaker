@@ -14,6 +14,7 @@
 ### Changes
 
 - `--error-sub`, `--error-ins` and `--error-del` must now add up to 1. Before, a lower sum was accepted and left some errors unapplied.
+- New homopolymer model, fitted on reads grouped by quality: errors in long runs depend less on read quality, so fast-basecalled reads no longer get too many errors in runs of 8+.
 
 ## 0.3.0 - 2026-11-10
 
