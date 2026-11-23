@@ -47,18 +47,18 @@ readfaker -r <reference> -i <input> -o <output> -n <num_reads>
 - `-s, --seed <N>` - Random seed for reproducibility (read names included)
 - `--compression-threads <N>` - Number of compression threads for output (default: 4, use 0 to detect them automatically)
 - `--compression-level <N>` - BGZF compression level for output, 0-12 (default: 2)
-- `--error-sub <RATE>` - Fraction of errors that are substitutions (default: 0.55)
+- `--error-sub <RATE>` - Fraction of errors that are substitutions (default: 0.59)
 - `--error-ins <RATE>` - Fraction of errors that are insertions (default: 0.18)
-- `--error-del <RATE>` - Fraction of errors that are deletions (default: 0.27)
-- `--error-ins-ext <RATE>` - Probability of extending an insertion by one more base (default: 0.27)
-- `--error-del-ext <RATE>` - Probability of extending a deletion by one more base (default: 0.3)
+- `--error-del <RATE>` - Fraction of errors that are deletions (default: 0.23)
+- `--error-ins-ext <RATE>` - Probability of extending an insertion by one more base (default: 0.26)
+- `--error-del-ext <RATE>` - Probability of extending a deletion by one more base (default: 0.34)
 - `--circular` - Treat all reference sequences as circular, so reads can span the end and start of a contig (e.g. bacterial chromosomes and plasmids)
 - `--chimera-rate <RATE>` - Fraction of reads that are chimeras, joining two fragments from unrelated positions (default: 0, see [Chimeric Reads](#chimeric-reads))
 - `--no-origin` - Don't write each read's origin (see [Read Origin](#read-origin))
 - `-v, --verbose` - Enable verbose output
 
-The three `--error-sub`, `--error-ins` and `--error-del` values set the mix of error types, not how many errors there are, and must add up to 1.
-How many errors a read gets depends on its quality scores.
+> [!NOTE]
+> The three `--error-sub`, `--error-ins` and `--error-del` values set the mix of error types outside homopolymer runs, not how many errors there are, and must add up to 1.
 
 ### Examples
 

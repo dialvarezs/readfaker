@@ -5,6 +5,8 @@
 ### Improvements
 
 - Add `--abundance` to set the relative abundance of each reference sequence, e.g. to simulate metagenomes.
+- New homopolymer model, fitted on reads grouped by quality: errors in long runs depend less on read quality, so fast-basecalled reads no longer get too many errors in runs of 8+.
+- New default error mix (0.59/0.18/0.23) and indel extension rates (0.26/0.34), measured outside homopolymer runs.
 
 ### Fixes
 
@@ -14,7 +16,7 @@
 ### Changes
 
 - `--error-sub`, `--error-ins` and `--error-del` must now add up to 1. Before, a lower sum was accepted and left some errors unapplied.
-- New homopolymer model, fitted on reads grouped by quality: errors in long runs depend less on read quality, so fast-basecalled reads no longer get too many errors in runs of 8+.
+- Output differs from 0.3.0 for the same seed.
 
 ## 0.3.0 - 2026-11-10
 

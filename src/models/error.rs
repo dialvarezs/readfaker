@@ -1,13 +1,14 @@
 use anyhow::{Result, bail};
 use rand::{Rng, RngExt};
 
-// Defaults measured on R10.4.1 E8.2 (dorado fast/hac/sup) reads aligned to their isolate assemblies;
-// the error-event mix was stable across basecaller tiers.
-const SUBSTITUTION_DEFAULT_RATE: f64 = 0.55;
+// Defaults measured on R10.4.1 E8.2 reads (dorado fast/hac/sup) from bacterial isolates aligned to
+// their assemblies and HG002 aligned to its Q100 assembly, counting only errors outside
+// homopolymer runs (those follow the homopolymer model); mean across datasets.
+const SUBSTITUTION_DEFAULT_RATE: f64 = 0.59;
 const INSERTION_DEFAULT_RATE: f64 = 0.18;
-const DELETION_DEFAULT_RATE: f64 = 0.27;
-const INSERTION_EXTENSION_DEFAULT_RATE: f64 = 0.27;
-const DELETION_EXTENSION_DEFAULT_RATE: f64 = 0.3;
+const DELETION_DEFAULT_RATE: f64 = 0.23;
+const INSERTION_EXTENSION_DEFAULT_RATE: f64 = 0.26;
+const DELETION_EXTENSION_DEFAULT_RATE: f64 = 0.34;
 const EXTENSION_LIMIT: usize = 100;
 
 /// Homopolymer length-error model: `(a, b)` by run length (index = length, last entry for longer
@@ -68,11 +69,11 @@ impl ErrorModel {
     /// Creates a new error model with specified or default rates.
     ///
     /// # Arguments
-    /// * `substitution_rate` - Probability of substitution errors (default: 0.55)
+    /// * `substitution_rate` - Probability of substitution errors (default: 0.59)
     /// * `insertion_rate` - Probability of insertion errors (default: 0.18)
-    /// * `deletion_rate` - Probability of deletion errors (default: 0.27)
-    /// * `insertion_extension_rate` - Probability of extending an insertion (default: 0.27)
-    /// * `deletion_extension_rate` - Probability of extending a deletion (default: 0.3)
+    /// * `deletion_rate` - Probability of deletion errors (default: 0.23)
+    /// * `insertion_extension_rate` - Probability of extending an insertion (default: 0.26)
+    /// * `deletion_extension_rate` - Probability of extending a deletion (default: 0.34)
     ///
     /// # Returns
     /// A validated `ErrorModel` instance
@@ -86,7 +87,7 @@ impl ErrorModel {
     /// ```
     /// use readfaker::models::ErrorModel;
     ///
-    /// // Use default rates (0.55, 0.18, 0.27, 0.27, 0.3)
+    /// // Use default rates (0.59, 0.18, 0.23, 0.26, 0.34)
     /// let model = ErrorModel::new(None, None, None, None, None).unwrap();
     ///
     /// // Custom rates with longer indels

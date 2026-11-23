@@ -54,7 +54,7 @@ pub struct Cli {
     #[arg(long = "compression-level", default_value = "2", value_parser = clap::value_parser!(u8).range(0..=12))]
     pub compression_level: u8,
 
-    /// Fraction of errors that are substitutions (default: 0.55)
+    /// Fraction of errors that are substitutions (default: 0.59)
     #[arg(long, value_name = "RATE")]
     pub error_sub: Option<f64>,
 
@@ -62,15 +62,15 @@ pub struct Cli {
     #[arg(long, value_name = "RATE")]
     pub error_ins: Option<f64>,
 
-    /// Fraction of errors that are deletions (default: 0.27)
+    /// Fraction of errors that are deletions (default: 0.23)
     #[arg(long, value_name = "RATE")]
     pub error_del: Option<f64>,
 
-    /// Probability of extending an insertion by one more base (default: 0.27)
+    /// Probability of extending an insertion by one more base (default: 0.26)
     #[arg(long, value_name = "RATE")]
     pub error_ins_ext: Option<f64>,
 
-    /// Probability of extending a deletion by one more base (default: 0.3)
+    /// Probability of extending a deletion by one more base (default: 0.34)
     #[arg(long, value_name = "RATE")]
     pub error_del_ext: Option<f64>,
 
