@@ -10,7 +10,7 @@ A simple and fast Oxford Nanopore sequencing reads with realistic quality profil
 - Supports both FASTQ and BAM formats for input and output.
 - Configurable error rates and indel extension probabilities. Homopolymer length errors grow with run length.
 - Optional chimeric reads.
-- Fast: generates about 1 Gb of reads in less than 5 seconds on a 16 core CPU.
+- Fast: generates about 1 Gb of reads in less than 5 seconds.
 
 ## Motivation
 
