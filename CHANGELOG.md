@@ -9,7 +9,7 @@
 ### Fixes
 
 - Read names are drawn from the seeded RNG, so the same seed gives identical output.
-- The number of wrong bases now matches the quality scores. Previously, indel counted as one, so wrong bases were higher than expected.
+- The number of wrong bases now matches the quality scores. Previously, indels counted as one and homopolymer errors were added on top, so reads had about 10-20% more wrong bases than expected.
 
 ### Changes
 

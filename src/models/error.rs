@@ -142,6 +142,24 @@ impl ErrorModel {
             + self.deletion_rate * Self::mean_length(self.deletion_extension_rate)
     }
 
+    /// Mean number of bases added or removed by a homopolymer length error.
+    ///
+    /// # Arguments
+    /// * `length` - Length of the homopolymer run
+    pub fn mean_homopolymer_error_bases(&self, length: usize) -> f64 {
+        let shorten_rate = Self::shorten_rate(length);
+        shorten_rate * Self::mean_length(self.deletion_extension_rate).min((length - 1) as f64)
+            + (1.0 - shorten_rate) * Self::mean_length(self.insertion_extension_rate)
+    }
+
+    fn shorten_rate(length: usize) -> f64 {
+        if length >= LONG_HOMOPOLYMER_LENGTH {
+            LONG_HOMOPOLYMER_SHORTEN_RATE
+        } else {
+            HOMOPOLYMER_SHORTEN_RATE
+        }
+    }
+
     /// Sample length from geometric distribution based on extension rate
     fn sample_length(&self, rng: &mut impl Rng, extension_rate: f64) -> usize {
         let mut length = 1;
@@ -182,12 +200,7 @@ impl ErrorModel {
     /// # Returns
     /// Signed change in run length: negative shortens the run, positive lengthens it
     pub fn get_homopolymer_alteration(&self, length: usize, rng: &mut impl Rng) -> isize {
-        let shorten_rate = if length >= LONG_HOMOPOLYMER_LENGTH {
-            LONG_HOMOPOLYMER_SHORTEN_RATE
-        } else {
-            HOMOPOLYMER_SHORTEN_RATE
-        };
-        if rng.random_bool(shorten_rate) {
+        if rng.random_bool(Self::shorten_rate(length)) {
             -(self.sample_length(rng, self.deletion_extension_rate) as isize)
         } else {
             self.sample_length(rng, self.insertion_extension_rate) as isize
@@ -343,6 +356,27 @@ mod tests {
         assert!(probabilities[3..].windows(2).all(|w| w[0] < w[1]));
         assert!(probabilities.iter().all(|&p| (0.0..=1.0).contains(&p)));
         assert_eq!(model.homopolymer_error_probabilities(1.0)[3], 1.0);
+    }
+
+    #[test]
+    fn test_mean_homopolymer_error_bases_matches_sampling() {
+        let model = ErrorModel::new(None, None, None, None, None).unwrap();
+        let mut rng = StdRng::seed_from_u64(7);
+        let n = 200_000;
+        let changed: usize = (0..n)
+            .map(|_| {
+                model
+                    .get_homopolymer_alteration(6, &mut rng)
+                    .unsigned_abs()
+                    .min(5)
+            })
+            .sum();
+        let mean = changed as f64 / n as f64;
+        // capping a shortening at 5 bases barely matters at these extension rates
+        assert!(
+            (mean - model.mean_homopolymer_error_bases(6)).abs() < 0.01,
+            "{mean}"
+        );
     }
 
     #[test]
