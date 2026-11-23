@@ -91,11 +91,7 @@ readfaker -r genome.fasta -i real_reads.fastq.gz -o simulated_reads.fastq.gz -n 
 4. Adds errors. The quality scores give the number of wrong bases expected in the read. Homopolymer runs (3+ identical bases) get length errors first, more likely in longer runs and in lower-quality reads. The remaining expected errors are spread over the other bases in proportion to their error probability, as substitutions, insertions or deletions according to the configured mix. Inside homopolymer runs only substitutions are added this way.
 5. Writes FASTQ or BAM records, with multi-threaded BGZF compression for `.gz`, `.bgz`, or `.bam` files.
 
-## Error Model Defaults
-
-Default error rates and the homopolymer model were measured on R10.4.1 reads (dorado fast@v5.2.0, hac@v6.0.0 and sup@v5.2.0) from bacterial isolates aligned to their own assemblies, and HG002 aligned to its Q100 assembly.
-
-## Abundance
+### Abundance
 
 By default, reads are spread over the reference sequences in proportion to their length, so all of them get the same coverage.
 With `--abundance`, each sequence gets a relative abundance (sequencing depth), and is picked in proportion to its length times its abundance.
@@ -111,7 +107,7 @@ genomeA_plasmid	10
 genomeB_chr	1
 ```
 
-## Read Origin
+### Read Origin
 
 Reads are sampled from both strands with equal probability.
 Each read records where it was sampled from as an `XO:Z:<contig>:<start>-<end>:<strand>` tag (1-based, inclusive reference coordinates; strand `+` or `-`).
@@ -123,7 +119,7 @@ Use `--no-origin` to omit it, e.g. for blind tests where reads must not be told 
 @5272f39c-f9a9-4f93-9cce-849905073826 XO:Z:chr1:3686-4184:-
 ```
 
-## Chimeric Reads
+### Chimeric Reads
 
 With `--chimera-rate`, that fraction of reads joins two fragments taken from unrelated positions, contigs and strands.
 The read length is split between both fragments, so read lengths still follow the input distribution.
@@ -135,6 +131,10 @@ The origin lists both fragments separated by `;`:
 
 The rate depends on the library prep, so chimeras are off by default.
 In the data used for the [error model defaults](#error-model-defaults), about 3% of reads from a ligation library (HG002) and about 0.2% from a rapid barcoding library (bacterial isolates) were chimeras.
+
+## Error Model Defaults
+
+Default error rates and the homopolymer model were measured on R10.4.1 reads (dorado fast@v5.2.0, hac@v6.0.0 and sup@v5.2.0) from bacterial isolates aligned to their own assemblies, and HG002 aligned to its Q100 assembly.
 
 ## Limitations
 
@@ -149,9 +149,3 @@ cargo build --release
 ```
 
 The binary will be available at `target/release/readfaker`.
-
-## Running Tests
-
-```bash
-cargo test
-```
