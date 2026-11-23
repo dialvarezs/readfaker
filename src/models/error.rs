@@ -127,6 +127,22 @@ impl ErrorModel {
         })
     }
 
+    /// Mean length of indels sampled with `sample_length`.
+    fn mean_length(extension_rate: f64) -> f64 {
+        if extension_rate >= 1.0 {
+            return EXTENSION_LIMIT as f64;
+        }
+        (1.0 - extension_rate.powi(EXTENSION_LIMIT as i32)) / (1.0 - extension_rate)
+    }
+
+    /// Mean number of bases changed by an error from `get_alteration_type`: one for a
+    /// substitution, the indel length for insertions and deletions.
+    pub fn mean_error_bases(&self) -> f64 {
+        self.substitution_rate
+            + self.insertion_rate * Self::mean_length(self.insertion_extension_rate)
+            + self.deletion_rate * Self::mean_length(self.deletion_extension_rate)
+    }
+
     /// Sample length from geometric distribution based on extension rate
     fn sample_length(&self, rng: &mut impl Rng, extension_rate: f64) -> usize {
         let mut length = 1;

@@ -334,8 +334,10 @@ impl ReadGenerator {
 
     /// Applies sequencing errors to a sequence based on quality scores and error model.
     ///
-    /// For each position, uses the quality score to determine if an error occurs,
-    /// then uses the error model to determine the type of error (substitution, insertion, or deletion).
+    /// The quality scores give the read's expected number of wrong bases. Per-base error
+    /// probabilities are scaled so that errors change that many bases, counting each indel by its
+    /// length. For each position, the scaled quality score determines if an error occurs, and the
+    /// error model its type (substitution, insertion, or deletion).
     ///
     /// # Arguments
     /// * `sequence` - Original nucleotide sequence
@@ -347,7 +349,7 @@ impl ReadGenerator {
         let mut new_sequence = Vec::with_capacity(sequence.len());
         let mut new_quality = Vec::with_capacity(qualities.len());
 
-        let thresholds = &*ERROR_THRESHOLDS;
+        let thresholds = self.scaled_thresholds();
         // Error-free stretches are copied in bulk; only error positions are handled per base
         let mut run_start = 0;
         let mut i = 0;
@@ -392,6 +394,16 @@ impl ReadGenerator {
         new_quality.extend_from_slice(&qualities[run_start..]);
 
         (new_sequence, new_quality)
+    }
+
+    /// Per-base error thresholds, scaled so that errors change as many bases as the quality scores
+    /// predict.
+    ///
+    /// # Returns
+    /// Thresholds indexed by quality ASCII value, as in `ERROR_THRESHOLDS`
+    fn scaled_thresholds(&self) -> [u32; 256] {
+        let scale = 1.0 / self.error_model.mean_error_bases();
+        ERROR_THRESHOLDS.map(|t| (f64::from(t) * scale).min(f64::from(u32::MAX)) as u32)
     }
 
     /// Returns a random nucleotide, optionally excluding a specific one.
@@ -843,6 +855,16 @@ mod tests {
         // Runs of 1-2 bases are left to the per-base error model
         let (seq, _) = generator.apply_homopolymer_errors(b"ACCGTTA".to_vec(), vec![b'!'; 7]);
         assert_eq!(seq, b"ACCGTTA");
+    }
+
+    #[test]
+    fn test_errors_are_counted_in_bases() {
+        let generator = create_test_generator(None).unwrap();
+        let base = ERROR_THRESHOLDS[usize::from(b'+')]; // Q10
+        // Errors are drawn so that their bases (indels count by length) match the quality scores
+        let t = generator.scaled_thresholds()[usize::from(b'+')];
+        let bases = generator.error_model.mean_error_bases();
+        assert!((f64::from(t) / f64::from(base) - 1.0 / bases).abs() < 1e-6);
     }
 
     #[test]

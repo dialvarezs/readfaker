@@ -9,6 +9,7 @@
 ### Fixes
 
 - Read names are drawn from the seeded RNG, so the same seed gives identical output.
+- The number of wrong bases now matches the quality scores. Previously, indel counted as one, so wrong bases were higher than expected.
 
 ## 0.3.0 - 2026-11-10
 
