@@ -86,7 +86,7 @@ readfaker -r genome.fasta -i real_reads.fastq.gz -o simulated_reads.fastq.gz -n 
 
 ## Error Model Defaults
 
-Default error rates and the homopolymer model were measured on R10.4.1 reads (dorado v2.1 fast, hac and sup) from bacterial isolates aligned to their own assemblies, and HG002 aligned to its Q100 assembly.
+Default error rates and the homopolymer model were measured on R10.4.1 reads (dorado fast@v5.2.0, hac@v6.0.0 and sup@v5.2.0) from bacterial isolates aligned to their own assemblies, and HG002 aligned to its Q100 assembly.
 
 ## Abundance
 
@@ -131,7 +131,8 @@ In the data used for the [error model defaults](#error-model-defaults), about 3%
 
 ## Limitations
 
-- Quality scores are taken at face value. Real basecallers are not perfectly calibrated, so simulated reads can have more or less substitutions than real ones.
+- Quality scores are taken at face value, so simulated reads are only as accurate as the basecaller's quality scores. In some datasets, reads had between 11% fewer and 12% more errors than their quality scores predict. On older models this can be worse.
+- Homopolymer errors depend on the base (G/C runs have about twice the errors of A/T runs) and vary between datasets at the same read quality, but the model only uses run length and read quality.
 - Junk reads, adapters and barcodes are not simulated.
 
 ## Building from Source
