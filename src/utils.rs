@@ -1,8 +1,11 @@
 use crate::io::bam::BamReader;
 use crate::io::fastq::FastqReader;
 use crate::models::{LengthModel, QualityModel};
+use anyhow::{Context, bail};
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
+use std::collections::HashMap;
+use std::fs;
 use std::path::Path;
 use std::sync::LazyLock;
 
@@ -95,9 +98,63 @@ pub fn load_models(
     Ok((length_model, quality_model))
 }
 
+/// Loads per-sequence abundances from a two-column TSV file (`<sequence id>\t<abundance>`).
+///
+/// Empty lines and lines starting with `#` are ignored. Abundances must be finite and >= 0.
+pub fn load_abundances(path: &Path) -> anyhow::Result<HashMap<String, f64>> {
+    let content = fs::read_to_string(path)
+        .with_context(|| format!("Failed to read abundance file {}", path.display()))?;
+    let mut abundances = HashMap::new();
+    for (i, line) in content.lines().enumerate() {
+        let line = line.trim_end_matches('\r');
+        if line.trim().is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let fields: Vec<&str> = line.split('\t').collect();
+        let [id, value] = fields[..] else {
+            bail!(
+                "{}:{}: expected 2 tab-separated columns",
+                path.display(),
+                i + 1
+            );
+        };
+        let abundance: f64 = value
+            .trim()
+            .parse()
+            .ok()
+            .filter(|a: &f64| a.is_finite() && *a >= 0.0)
+            .with_context(|| {
+                format!("{}:{}: invalid abundance '{value}'", path.display(), i + 1)
+            })?;
+        if abundances.insert(id.to_string(), abundance).is_some() {
+            bail!("{}:{}: duplicate sequence id '{id}'", path.display(), i + 1);
+        }
+    }
+    Ok(abundances)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_load_abundances() {
+        let dir = std::env::temp_dir().join(format!("readfaker-abund-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ab.tsv");
+
+        fs::write(&path, "# comment\nchr1\t2.5\n\nplasmid\t0\n").unwrap();
+        let ab = load_abundances(&path).unwrap();
+        assert_eq!(ab.len(), 2);
+        assert_eq!(ab["chr1"], 2.5);
+        assert_eq!(ab["plasmid"], 0.0);
+
+        for bad in ["chr1\t-1\n", "chr1\tx\n", "chr1 1\n", "chr1\t1\nchr1\t2\n"] {
+            fs::write(&path, bad).unwrap();
+            assert!(load_abundances(&path).is_err(), "accepted {bad:?}");
+        }
+        fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn test_error_thresholds() {

@@ -1,6 +1,6 @@
 [package]
 name = "readfaker"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 
@@ -9,10 +9,10 @@ anyhow = "1.0.100"
 clap = { version = "4.5.52", features = ["derive"] }
 console = "0.16.1"
 flate2 = {version = "1.1.5", features = ["zlib-rs"]}
-noodles = { version = "0.119.0", features = ["bam", "bgzf", "fasta", "fastq", "sam"] }
-noodles-bgzf = { version = "0.52", features = ["libdeflate"] }
+noodles = { version = "0.120.0", features = ["bam", "bgzf", "fasta", "fastq", "sam"] }
+noodles-bgzf = { version = "0.53", features = ["libdeflate"] }
 rand = "0.10.3"
-uuid = { version = "1.18.1", features = ["v4"] }
+uuid = "1.18.1"
 
 [features]
 default = []

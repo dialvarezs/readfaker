@@ -1,28 +1,43 @@
 use anyhow::{Result, bail};
 use rand::{Rng, RngExt};
 
-// Defaults measured on R10.4.1 E8.2 (dorado fast/hac/sup) reads aligned to their isolate assemblies;
-// the error-event mix was stable across basecaller tiers.
-const SUBSTITUTION_DEFAULT_RATE: f64 = 0.55;
+// Defaults measured on R10.4.1 E8.2 reads (dorado fast/hac/sup) from bacterial isolates aligned to
+// their assemblies and HG002 aligned to its Q100 assembly, counting only errors outside
+// homopolymer runs (those follow the homopolymer model); mean across datasets.
+const SUBSTITUTION_DEFAULT_RATE: f64 = 0.59;
 const INSERTION_DEFAULT_RATE: f64 = 0.18;
-const DELETION_DEFAULT_RATE: f64 = 0.27;
-const INSERTION_EXTENSION_DEFAULT_RATE: f64 = 0.27;
-const DELETION_EXTENSION_DEFAULT_RATE: f64 = 0.3;
+const DELETION_DEFAULT_RATE: f64 = 0.23;
+const INSERTION_EXTENSION_DEFAULT_RATE: f64 = 0.26;
+const DELETION_EXTENSION_DEFAULT_RATE: f64 = 0.34;
 const EXTENSION_LIMIT: usize = 100;
 
-/// Extra homopolymer length-error weight by run length (index = length, last entry for longer runs).
-/// A run of length L gets an extra length error with probability `1 - (1 - p)^w(L)`, where `p` is the
-/// read's mean per-base error probability. Weights are fitted so that, added to the per-base errors,
-/// homopolymer accuracy matches real R10.4.1 sup/hac reads from bacterial isolates (runs up to 9)
-/// and HG002 against its Q100 assembly (runs up to 12+); geometric mean across datasets and tiers.
-const HOMOPOLYMER_WEIGHTS: [f64; 13] = [
-    0.0, 0.0, 0.0, 0.4, 1.2, 2.2, 3.7, 5.2, 13.0, 35.0, 50.0, 100.0, 270.0,
+/// Homopolymer length-error model: `(a, b)` by run length (index = length, last entry for longer
+/// runs). A run has a length error with probability `1 - exp(-a * p^b)`, where `p` is the read's
+/// mean per-base error probability. `b` falls with run length because errors in long runs depend
+/// little on read quality. Runs shorter than 3 are left to the per-base model.
+///
+/// Fitted on R10.4.1 reads (dorado fast/hac/sup) from bacterial isolates and HG002.
+const HOMOPOLYMER_MODEL: [(f64, f64); 13] = [
+    (0.0, 1.0),
+    (0.0, 1.0),
+    (0.0, 1.0),
+    (1.12, 0.93),
+    (1.58, 0.87),
+    (1.76, 0.80),
+    (2.06, 0.73),
+    (2.04, 0.66),
+    (2.13, 0.53),
+    (2.48, 0.42),
+    (2.28, 0.32),
+    (1.94, 0.19),
+    (1.89, 0.058),
 ];
-/// Fraction of homopolymer length errors that shorten the run (the rest lengthen it).
-const HOMOPOLYMER_SHORTEN_RATE: f64 = 0.75;
-/// Long runs are lengthened more often than short ones.
-const LONG_HOMOPOLYMER_SHORTEN_RATE: f64 = 0.65;
-const LONG_HOMOPOLYMER_LENGTH: usize = 8;
+/// Fraction of homopolymer length errors that shorten the run (the rest lengthen it), by run length
+/// (index = length, last entry for longer runs).
+const HOMOPOLYMER_SHORTEN_RATES: [f64; 7] = [0.0, 0.0, 0.0, 0.50, 0.60, 0.65, 0.70];
+/// Probability of shortening or lengthening a run by one more base.
+const HOMOPOLYMER_SHORTEN_EXTENSION_RATE: f64 = 0.2;
+const HOMOPOLYMER_LENGTHEN_EXTENSION_RATE: f64 = 0.25;
 
 /// Type of sequencing error alteration applied to a nucleotide position.
 #[derive(Debug)]
@@ -39,9 +54,8 @@ pub enum AlterationType {
 ///
 /// # Rate Constraints
 /// - All rates must be in the range [0.0, 1.0]
-/// - The sum of substitution, insertion, and deletion rates must be ≤ 1.0
+/// - Substitution, insertion, and deletion rates must sum to 1.0
 /// - Extension rates define geometric distribution for indel lengths
-/// - If the sum < 1.0, some errors will result in no alteration
 #[derive(Debug)]
 pub struct ErrorModel {
     pub substitution_rate: f64,
@@ -55,11 +69,11 @@ impl ErrorModel {
     /// Creates a new error model with specified or default rates.
     ///
     /// # Arguments
-    /// * `substitution_rate` - Probability of substitution errors (default: 0.55)
+    /// * `substitution_rate` - Probability of substitution errors (default: 0.59)
     /// * `insertion_rate` - Probability of insertion errors (default: 0.18)
-    /// * `deletion_rate` - Probability of deletion errors (default: 0.27)
-    /// * `insertion_extension_rate` - Probability of extending an insertion (default: 0.27)
-    /// * `deletion_extension_rate` - Probability of extending a deletion (default: 0.3)
+    /// * `deletion_rate` - Probability of deletion errors (default: 0.23)
+    /// * `insertion_extension_rate` - Probability of extending an insertion (default: 0.26)
+    /// * `deletion_extension_rate` - Probability of extending a deletion (default: 0.34)
     ///
     /// # Returns
     /// A validated `ErrorModel` instance
@@ -67,18 +81,18 @@ impl ErrorModel {
     /// # Errors
     /// Returns an error if:
     /// - Any rate is outside [0.0, 1.0]
-    /// - The sum of error rates exceeds 1.0
+    /// - The error rates don't sum to 1.0
     ///
     /// # Example
     /// ```
     /// use readfaker::models::ErrorModel;
     ///
-    /// // Use default rates (0.55, 0.18, 0.27, 0.27, 0.3)
+    /// // Use default rates (0.59, 0.18, 0.23, 0.26, 0.34)
     /// let model = ErrorModel::new(None, None, None, None, None).unwrap();
     ///
     /// // Custom rates with longer indels
     /// let model = ErrorModel::new(
-    ///     Some(0.5), Some(0.3), Some(0.1),
+    ///     Some(0.5), Some(0.3), Some(0.2),
     ///     Some(0.25), Some(0.25)
     /// ).unwrap();
     /// ```
@@ -108,9 +122,9 @@ impl ErrorModel {
         }
 
         let sum = substitution + insertion + deletion;
-        if sum > 1.0 {
+        if (sum - 1.0).abs() > 1e-6 {
             bail!(
-                "Error rates must sum to at most 1.0 (got substitution={}, insertion={}, deletion={}, sum={})",
+                "Error rates must sum to 1.0 (got substitution={}, insertion={}, deletion={}, sum={})",
                 substitution,
                 insertion,
                 deletion,
@@ -125,6 +139,37 @@ impl ErrorModel {
             insertion_extension_rate: ins_ext,
             deletion_extension_rate: del_ext,
         })
+    }
+
+    /// Mean length of indels sampled with `sample_length`.
+    fn mean_length(extension_rate: f64) -> f64 {
+        if extension_rate >= 1.0 {
+            return EXTENSION_LIMIT as f64;
+        }
+        (1.0 - extension_rate.powi(EXTENSION_LIMIT as i32)) / (1.0 - extension_rate)
+    }
+
+    /// Mean number of bases changed by an error from `get_alteration_type`: one for a
+    /// substitution, the indel length for insertions and deletions.
+    pub fn mean_error_bases(&self) -> f64 {
+        self.substitution_rate
+            + self.insertion_rate * Self::mean_length(self.insertion_extension_rate)
+            + self.deletion_rate * Self::mean_length(self.deletion_extension_rate)
+    }
+
+    /// Mean number of bases added or removed by a homopolymer length error.
+    ///
+    /// # Arguments
+    /// * `length` - Length of the homopolymer run
+    pub fn mean_homopolymer_error_bases(&self, length: usize) -> f64 {
+        let shorten_rate = Self::shorten_rate(length);
+        shorten_rate
+            * Self::mean_length(HOMOPOLYMER_SHORTEN_EXTENSION_RATE).min((length - 1) as f64)
+            + (1.0 - shorten_rate) * Self::mean_length(HOMOPOLYMER_LENGTHEN_EXTENSION_RATE)
+    }
+
+    fn shorten_rate(length: usize) -> f64 {
+        HOMOPOLYMER_SHORTEN_RATES[length.min(HOMOPOLYMER_SHORTEN_RATES.len() - 1)]
     }
 
     /// Sample length from geometric distribution based on extension rate
@@ -151,14 +196,14 @@ impl ErrorModel {
     pub fn homopolymer_error_probabilities(
         &self,
         error_probability: f64,
-    ) -> [f64; HOMOPOLYMER_WEIGHTS.len()] {
-        HOMOPOLYMER_WEIGHTS.map(|weight| 1.0 - (1.0 - error_probability).powf(weight))
+    ) -> [f64; HOMOPOLYMER_MODEL.len()] {
+        HOMOPOLYMER_MODEL.map(|(a, b)| 1.0 - (-a * error_probability.powf(b)).exp())
     }
 
     /// Samples a length change for a homopolymer run that has an error.
     ///
-    /// Short runs are mostly shortened, long runs (8+) nearly as often lengthened. The size of the
-    /// change follows the same geometric distributions as regular indels.
+    /// Runs of 3 are as often shortened as lengthened; longer runs are mostly shortened. The size of
+    /// the change follows a geometric distribution, with lower extension rates than regular indels.
     ///
     /// # Arguments
     /// * `length` - Length of the homopolymer run
@@ -167,43 +212,34 @@ impl ErrorModel {
     /// # Returns
     /// Signed change in run length: negative shortens the run, positive lengthens it
     pub fn get_homopolymer_alteration(&self, length: usize, rng: &mut impl Rng) -> isize {
-        let shorten_rate = if length >= LONG_HOMOPOLYMER_LENGTH {
-            LONG_HOMOPOLYMER_SHORTEN_RATE
+        if rng.random_bool(Self::shorten_rate(length)) {
+            -(self.sample_length(rng, HOMOPOLYMER_SHORTEN_EXTENSION_RATE) as isize)
         } else {
-            HOMOPOLYMER_SHORTEN_RATE
-        };
-        if rng.random_bool(shorten_rate) {
-            -(self.sample_length(rng, self.deletion_extension_rate) as isize)
-        } else {
-            self.sample_length(rng, self.insertion_extension_rate) as isize
+            self.sample_length(rng, HOMOPOLYMER_LENGTHEN_EXTENSION_RATE) as isize
         }
     }
 
     /// Randomly determines which type of error alteration to apply.
     ///
     /// Uses the model's rate probabilities to select between substitution, insertion,
-    /// and deletion. If the sum of rates is less than 1.0, this may return `None`,
-    /// indicating no alteration should be applied.
+    /// and deletion.
     ///
     /// # Arguments
     /// * `rng` - Random number generator for sampling
     ///
     /// # Returns
-    /// * `Some(AlterationType)` - The type of alteration to apply
-    /// * `None` - No alteration (when random value exceeds the sum of all rates)
-    pub fn get_alteration_type(&self, rng: &mut impl Rng) -> Option<AlterationType> {
+    /// The type of alteration to apply
+    pub fn get_alteration_type(&self, rng: &mut impl Rng) -> AlterationType {
         let r = rng.random_range(0.0..1.0);
 
         if r < self.substitution_rate {
-            Some(AlterationType::Substitution)
+            AlterationType::Substitution
         } else if r < self.substitution_rate + self.insertion_rate {
             let len = self.sample_length(rng, self.insertion_extension_rate);
-            Some(AlterationType::Insertion(len))
-        } else if r < self.substitution_rate + self.insertion_rate + self.deletion_rate {
-            let len = self.sample_length(rng, self.deletion_extension_rate);
-            Some(AlterationType::Deletion(len))
+            AlterationType::Insertion(len)
         } else {
-            None
+            let len = self.sample_length(rng, self.deletion_extension_rate);
+            AlterationType::Deletion(len)
         }
     }
 }
@@ -225,11 +261,12 @@ mod tests {
     }
 
     #[test]
-    fn test_sum_exceeds_one() {
-        let result = ErrorModel::new(Some(0.6), Some(0.3), Some(0.2), None, None);
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("must sum to at most 1.0"));
+    fn test_sum_must_be_one() {
+        for (sub, ins, del) in [(0.6, 0.3, 0.2), (0.5, 0.2, 0.2)] {
+            let result = ErrorModel::new(Some(sub), Some(ins), Some(del), None, None);
+            let err_msg = result.unwrap_err().to_string();
+            assert!(err_msg.contains("must sum to 1.0"));
+        }
     }
 
     #[test]
@@ -240,7 +277,7 @@ mod tests {
         // With 100% substitution rate, should always return Substitution
         for _ in 0..10 {
             let alteration = model.get_alteration_type(&mut rng);
-            assert!(matches!(alteration, Some(AlterationType::Substitution)));
+            assert!(matches!(alteration, AlterationType::Substitution));
         }
     }
 
@@ -253,7 +290,7 @@ mod tests {
         for _ in 0..10 {
             let alteration = model.get_alteration_type(&mut rng);
             match alteration {
-                Some(AlterationType::Insertion(count)) => {
+                AlterationType::Insertion(count) => {
                     assert!(count >= 1); // Default extension is 0.4, so length >= 1
                 }
                 _ => panic!("Expected Insertion, got {:?}", alteration),
@@ -270,7 +307,7 @@ mod tests {
         for _ in 0..10 {
             let alteration = model.get_alteration_type(&mut rng);
             match alteration {
-                Some(AlterationType::Deletion(count)) => {
+                AlterationType::Deletion(count) => {
                     assert!(count >= 1); // Default extension is 0.4, so length >= 1
                 }
                 _ => panic!("Expected Deletion, got {:?}", alteration),
@@ -286,15 +323,13 @@ mod tests {
         let mut substitution_count = 0;
         let mut insertion_count = 0;
         let mut deletion_count = 0;
-        let mut none_count = 0;
 
         // Sample many times to check distribution
         for _ in 0..1000 {
             match model.get_alteration_type(&mut rng) {
-                Some(AlterationType::Substitution) => substitution_count += 1,
-                Some(AlterationType::Insertion(_)) => insertion_count += 1,
-                Some(AlterationType::Deletion(_)) => deletion_count += 1,
-                None => none_count += 1,
+                AlterationType::Substitution => substitution_count += 1,
+                AlterationType::Insertion(_) => insertion_count += 1,
+                AlterationType::Deletion(_) => deletion_count += 1,
             }
         }
 
@@ -302,7 +337,6 @@ mod tests {
         assert!(substitution_count > 400); // Expect ~500
         assert!(insertion_count > 200); // Expect ~300
         assert!(deletion_count > 100); // Expect ~200
-        assert_eq!(none_count, 0); // Sum = 1.0, so no None
     }
 
     #[test]
@@ -316,8 +350,8 @@ mod tests {
 
         for _ in 0..1000 {
             match model.get_alteration_type(&mut rng) {
-                Some(AlterationType::Insertion(count)) => max_ins_len = max_ins_len.max(count),
-                Some(AlterationType::Deletion(count)) => max_del_len = max_del_len.max(count),
+                AlterationType::Insertion(count) => max_ins_len = max_ins_len.max(count),
+                AlterationType::Deletion(count) => max_del_len = max_del_len.max(count),
                 _ => {}
             }
         }
@@ -333,7 +367,30 @@ mod tests {
         assert_eq!(probabilities[..3], [0.0; 3]);
         assert!(probabilities[3..].windows(2).all(|w| w[0] < w[1]));
         assert!(probabilities.iter().all(|&p| (0.0..=1.0).contains(&p)));
-        assert_eq!(model.homopolymer_error_probabilities(1.0)[3], 1.0);
+        // Long runs depend less on read quality than short ones
+        let low = model.homopolymer_error_probabilities(0.1);
+        assert!(low[3] / probabilities[3] > low[9] / probabilities[9]);
+    }
+
+    #[test]
+    fn test_mean_homopolymer_error_bases_matches_sampling() {
+        let model = ErrorModel::new(None, None, None, None, None).unwrap();
+        let mut rng = StdRng::seed_from_u64(7);
+        let n = 200_000;
+        let changed: usize = (0..n)
+            .map(|_| {
+                model
+                    .get_homopolymer_alteration(6, &mut rng)
+                    .unsigned_abs()
+                    .min(5)
+            })
+            .sum();
+        let mean = changed as f64 / n as f64;
+        // capping a shortening at 5 bases barely matters at these extension rates
+        assert!(
+            (mean - model.mean_homopolymer_error_bases(6)).abs() < 0.01,
+            "{mean}"
+        );
     }
 
     #[test]
