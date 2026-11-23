@@ -25,8 +25,15 @@ This is particularly useful for artificially contaminating real data for testing
 
 ## Installation
 
-Go to the [Releases](https://github.com/dialvarezs/readfaker/releases) and download the latest binary for Linux, Windows or macOS.
+ReadFaker is available on Bioconda:
+```
+conda install -c conda-forge -c bioconda readfaker
+```
+
+Pre-built binaries for Linux, Windows and macOS are on the [Releases](https://github.com/dialvarezs/readfaker/releases) page.
 For other platforms, see [Building from Source](#building-from-source).
+
+A container image is also available for use in pipelines, at [`ghcr.io/dialvarezs/readfaker`](https://github.com/dialvarezs/readfaker/pkgs/container/readfaker).
 
 ## Usage
 
