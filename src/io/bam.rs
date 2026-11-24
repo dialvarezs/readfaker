@@ -36,7 +36,7 @@ impl BamReader {
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn from_path(path: &Path) -> Result<BamReaderIterator> {
-        let mut reader = bam::io::reader::Builder::default()
+        let mut reader = bam::io::reader::Builder
             .build_from_path(path)
             .with_context(|| format!("Failed to open BAM file: {}", path.display()))?;
 

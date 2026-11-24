@@ -474,7 +474,7 @@ impl ReadGenerator {
     /// # Returns
     /// A random nucleotide byte from {A, C, G, T}
     fn get_random_nucleotide(&mut self, exclude: Option<u8>) -> u8 {
-        const NUCLEOTIDES: [u8; 4] = [b'A', b'C', b'G', b'T'];
+        const NUCLEOTIDES: [u8; 4] = *b"ACGT";
 
         match exclude {
             Some(nucleotide) => {
@@ -933,6 +933,7 @@ mod tests {
         let t = generator.scaled_thresholds(&qualities, &[], 10.0, 4.0)[usize::from(b'+')];
         assert!((f64::from(t) / f64::from(base) - 0.6 / bases).abs() < 1e-6);
         // Inside runs only substitutions apply, so the other bases make up for it
+        #[allow(clippy::single_range_in_vec_init)] // one run spanning the read, not a range of runs
         let t = generator.scaled_thresholds(&qualities, &[0..50], 10.0, 0.0)[usize::from(b'+')];
         let model = &generator.error_model;
         let expected = 1.0 / (0.5 * model.mean_error_bases() + 0.5 * model.substitution_rate);
