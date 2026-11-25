@@ -28,7 +28,7 @@ This is particularly useful for artificially contaminating real data for testing
 ReadFaker is available on Bioconda:
 
 ```
-conda install -c conda-forge -c bioconda readfaker
+conda install bioconda::readfaker
 ```
 
 Pre-built binaries for Linux, Windows and macOS are on the [Releases](https://github.com/dialvarezs/readfaker/releases) page.
