@@ -2,6 +2,10 @@
 
 # ReadFaker
 
+[![Bioconda](https://img.shields.io/conda/vn/bioconda/readfaker?style=flat-square&label=bioconda)](https://bioconda.github.io/recipes/readfaker/README.html)
+[![CI](https://img.shields.io/github/actions/workflow/status/dialvarezs/readfaker/rust_build.yml?branch=main&style=flat-square&label=CI)](https://github.com/dialvarezs/readfaker/actions/workflows/rust_build.yml)
+[![License](https://img.shields.io/github/license/dialvarezs/readfaker?style=flat-square)](LICENSE)
+
 A simple and fast Oxford Nanopore sequencing reads with realistic quality profiles by extracting empirical models from real sequencing data.
 
 ## Features
