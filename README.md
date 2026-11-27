@@ -151,18 +151,27 @@ Default error rates and the homopolymer model were measured on R10.4.1 reads (do
 
 ReadFaker needs no training step, reproduces homopolymer errors more closely than other simulators, and is much faster.
 
-|                        | ReadFaker 0.4.0 | Badread 0.4.2 | NanoSim 3.2.3 | PBSIM3 3.0.5 (sample) |
-|------------------------|-----------------|---------------|---------------|-----------------------|
-| Training needed        | No              | Yes (33 min)  | Yes (5 min)   | No                    |
-| Homopolymer error      | **0.018**       | 0.045         | 0.103         | 0.095                 |
-| Read identity error    | **0.001**       | 0.005         | 0.003         | 0.007                 |
-| Time per Gb (1 thread) | **3 s**         | 44 min        | 4 min         | 3 min                 |
-| Peak memory            | 96 MB           | 417 MB        | 4.2 GB        | **33 MB**             |
+### Accuracy
+
+Measured on R10.4.1 reads of the ZymoBIOMICS mock community (dorado fast, hac and sup), which were not used to set ReadFaker's defaults. Badread and NanoSim were trained on the same reads they were compared against.
+
+|                     | ReadFaker 0.4.0 | Badread 0.4.2 | NanoSim 3.2.3 | PBSIM3 3.0.5 (sample) |
+|---------------------|-----------------|---------------|---------------|-----------------------|
+| Homopolymer error   | **0.018**       | 0.045         | 0.103         | 0.095                 |
+| Read identity error | **0.001**       | 0.005         | 0.003         | 0.007                 |
 
 - Homopolymer error: mean absolute difference from real reads in the fraction of homopolymer runs with a wrong length, over run lengths 3 to 9.
 - Read identity error: absolute difference from real reads in mean read identity.
 
-Accuracy was measured on R10.4.1 reads of the ZymoBIOMICS mock community (dorado fast, hac and sup), which were not used to set ReadFaker's defaults. Badread and NanoSim were trained on the same reads they were compared against. Time and memory are from a single run generating 1 Gb of human reads.
+### Speed and Memory
+
+Measured on human reads (HG002, R10.4.1). Training time is for fitting each simulator's model to the real reads; time and memory are from a single run generating 1 Gb of reads.
+
+|                        | ReadFaker 0.4.0 | Badread 0.4.2 | NanoSim 3.2.3 | PBSIM3 3.0.5 (sample) |
+|------------------------|-----------------|---------------|---------------|-----------------------|
+| Training needed        | No              | Yes (33 min)  | Yes (5 min)   | No                    |
+| Time per Gb (1 thread) | **3 s**         | 44 min        | 4 min         | 3 min                 |
+| Peak memory            | 96 MB           | 417 MB        | 4.2 GB        | **33 MB**             |
 
 ## Building from Source
 
